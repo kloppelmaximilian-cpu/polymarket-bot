@@ -3,6 +3,11 @@ VENV := .venv
 PY := $(VENV)/bin/python
 BOT := $(VENV)/bin/bot
 
+# The interpreter used to *create* the venv. macOS ships 3.9 as `python3`,
+# which this project does not support, so override it rather than fight it:
+#   make install PYTHON=python3.12
+PYTHON ?= python3
+
 .PHONY: help install run dashboard status doctor discover test test-fast \
         lint validate accept backtest walkforward seeds robustness train \
         session clean db-size
@@ -12,7 +17,17 @@ help:  ## Show this help
 	  | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
 install:  ## Create the venv and install everything
-	python3 -m venv $(VENV)
+	@$(PYTHON) -c 'import sys; \
+	  sys.exit(0) if sys.version_info >= (3, 11) else \
+	  (print("Python 3.11+ required, found %d.%d at %s" % \
+	    (sys.version_info[0], sys.version_info[1], sys.executable)), \
+	   print(""), \
+	   print("  macOS:  brew install python@3.12"), \
+	   print("          make install PYTHON=python3.12"), \
+	   print("  Linux:  apt install python3.12 python3.12-venv"), \
+	   print("          make install PYTHON=python3.12"), \
+	   sys.exit(1))'
+	$(PYTHON) -m venv $(VENV)
 	$(VENV)/bin/pip install --quiet --upgrade pip
 	$(VENV)/bin/pip install -e ".[all]"
 	@mkdir -p data logs models

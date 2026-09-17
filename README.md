@@ -23,17 +23,32 @@ afterwards. See [What we actually measured](#what-we-actually-measured).
 ## Quick start
 
 ```bash
-git clone <this repo> && cd polymarket-bot
+git clone https://github.com/kloppelmaximilian-cpu/polymarket-bot.git
+cd polymarket-bot
 ./start_bot.sh            # creates a venv, installs, runs in PAPER mode
 ```
 
-In a second terminal:
+In a second terminal, from the same directory:
 
 ```bash
 ./dashboard.sh            # live terminal dashboard
 ```
 
 That is the whole happy path. Everything below is detail.
+
+Both scripts live **in the repository**, so run them from inside it -- `cd
+polymarket-bot` first, or you get `no such file or directory`.
+
+**macOS:** `python3` is Apple's 3.9, which this project does not support, and
+LightGBM's wheels need OpenMP. So:
+
+```bash
+brew install python@3.12 libomp
+make install PYTHON=python3.12
+```
+
+[SETUP.md](docs/SETUP.md#macos) covers both, including how to skip LightGBM
+entirely if you prefer.
 
 ### Manual setup
 

@@ -8,7 +8,24 @@
   reference exchanges
 - Nothing else for paper mode. No credentials, no funded wallet.
 
+## Get the code
+
+```bash
+git clone https://github.com/kloppelmaximilian-cpu/polymarket-bot.git
+cd polymarket-bot
+```
+
+Every command below is run from inside that directory. `make` and
+`./start_bot.sh` only exist there -- from your home directory you will get
+`No rule to make target` and `no such file or directory`.
+
 ## Install
+
+```bash
+make install          # or: make install PYTHON=python3.12
+```
+
+Or by hand:
 
 ```bash
 python3 -m venv .venv
@@ -18,6 +35,37 @@ pip install -e ".[all]"
 
 Extras: `[ml]` adds LightGBM and XGBoost, `[live]` adds `py-clob-client` (needed
 only for live order signing), `[dev]` adds pytest and ruff, `[all]` is all three.
+
+### macOS
+
+Two things bite here, both before any of our code runs.
+
+**`python3` is 3.9.** macOS ships the Xcode command-line Python, which this
+project does not support. Check with `python3 --version`; if it is below 3.11:
+
+```bash
+brew install python@3.12
+make install PYTHON=python3.12
+```
+
+`make install` refuses to build the venv on too old an interpreter rather than
+letting pip fail halfway through with a less obvious message.
+
+**LightGBM needs OpenMP.** Its macOS wheels link against `libomp`, which
+Apple's toolchain does not provide, so importing it raises a `dlopen` error
+about `libomp.dylib`:
+
+```bash
+brew install libomp
+```
+
+If you would rather not, install without the ML extra -- the bot runs fine on
+the analytic pricer and the nine signal strategies alone, and `bot doctor` will
+simply report `lightgbm` and `xgboost` as missing:
+
+```bash
+pip install -e ".[live,dev]"
+```
 
 Verify:
 

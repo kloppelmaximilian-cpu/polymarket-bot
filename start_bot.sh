@@ -16,11 +16,40 @@ for arg in "$@"; do
 done
 
 if [ ! -d "$VENV" ]; then
-  echo "Creating virtual environment..."
-  python3 -m venv "$VENV"
+  # Pick an interpreter this project actually supports. macOS ships 3.9 as
+  # `python3`, so fall through to the versioned names before giving up --
+  # otherwise pip fails halfway with a much less obvious message.
+  PY_BIN="${PYTHON:-}"
+  if [ -z "$PY_BIN" ]; then
+    for candidate in python3 python3.13 python3.12 python3.11; do
+      if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c \
+         'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)'; then
+        PY_BIN="$candidate"
+        break
+      fi
+    done
+  fi
+  if [ -z "$PY_BIN" ]; then
+    cat >&2 <<'MSG'
+No Python 3.11+ found.
+
+  macOS:  brew install python@3.12
+  Linux:  apt install python3.12 python3.12-venv
+
+Then re-run, or point this script at an interpreter directly:
+  PYTHON=/full/path/to/python3.12 ./start_bot.sh
+MSG
+    exit 1
+  fi
+  echo "Creating virtual environment with $PY_BIN..."
+  "$PY_BIN" -m venv "$VENV"
   "$VENV/bin/pip" install --quiet --upgrade pip
   echo "Installing pmbot and dependencies (this takes a minute)..."
-  "$VENV/bin/pip" install --quiet -e ".[all]"
+  if ! "$VENV/bin/pip" install --quiet -e ".[all]"; then
+    echo "Full install failed; retrying without the ML extra." >&2
+    echo "On macOS LightGBM also needs: brew install libomp" >&2
+    "$VENV/bin/pip" install --quiet -e ".[live,dev]"
+  fi
 fi
 
 mkdir -p data logs models
