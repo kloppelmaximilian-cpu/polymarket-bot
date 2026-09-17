@@ -175,3 +175,27 @@ class TestBacktestCommand:
         result = runner.invoke(app, ["train", "--source", "database"])
         assert result.exit_code == 1
         assert "Not enough labelled samples" in result.output
+
+
+class TestWalkForwardSeeds:
+    """The spread option, and the two ways of asking for it that make no sense."""
+
+    def test_seeds_is_advertised(self):
+        result = runner.invoke(app, ["walkforward", "--help"])
+        assert result.exit_code == 0
+        assert "--seeds" in result.output
+
+    def test_zero_seeds_is_rejected(self, state):
+        result = runner.invoke(app, ["walkforward", "--seeds", "0"])
+        assert result.exit_code == 2
+        assert "at least 1" in result.output
+
+    def test_seeds_with_a_recorded_session_is_rejected(self, state, tmp_path):
+        """Replaying one recorded world N times is the same world N times."""
+        session = tmp_path / "session.json"
+        session.write_text("{}")
+        result = runner.invoke(
+            app, ["walkforward", "--seeds", "3", "--session-file", str(session)]
+        )
+        assert result.exit_code == 2
+        assert "one recorded session is one world" in result.output.replace("\n", " ")

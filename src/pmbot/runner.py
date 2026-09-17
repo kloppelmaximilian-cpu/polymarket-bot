@@ -51,7 +51,11 @@ from .execution.executor import Executor
 from .execution.gate import GateConfig, TradeGate, rank_opportunities
 from .execution.paper import PaperVenue
 from .features.engine import FEATURE_NAMES, FeatureEngine
-from .logging_setup import get_logger, setup_logging
+from .logging_setup import (
+    get_logger,
+    install_loop_exception_handler,
+    setup_logging,
+)
 from .ml.registry import load_model
 from .orderbook.book import OrderBookManager
 from .polymarket.clob_rest import ClobRestClient
@@ -320,6 +324,8 @@ class BotRunner:
     async def start(self) -> None:
         settings = self.settings
         setup_logging(settings.log_level, settings.log_dir, settings.log_json)
+        # Exceptions raised in a loop callback bypass every try/except here.
+        install_loop_exception_handler()
         self.log.info(
             "starting bot",
             extra={

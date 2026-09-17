@@ -87,14 +87,56 @@ class WalkForwardResult:
     combined_calibration: CalibrationReport | None
     manifest: dict[str, Any] = field(default_factory=dict)
 
+    MIN_TRADES_PER_SCORED_SLICE = 5
+    MIN_SCORED_SLICES = 3
+
+    @property
+    def scored_slices(self) -> list[SliceResult]:
+        """Slices that traded often enough for their expectancy to mean anything."""
+        return [
+            s for s in self.slices
+            if s.report.trades >= self.MIN_TRADES_PER_SCORED_SLICE
+        ]
+
     @property
     def is_stable(self) -> bool:
-        """Positive expectancy in the clear majority of out-of-sample slices."""
-        scored = [s for s in self.slices if s.report.trades >= 5]
-        if len(scored) < 3:
-            return False
+        """Positive expectancy in the clear majority of out-of-sample slices.
+
+        False also when there is simply not enough evidence -- the caller gets
+        no credit for a run that never traded.  Use :attr:`stability` when the
+        difference between "unstable" and "undecidable" matters.
+        """
+        return self.stability == "stable"
+
+    @property
+    def stability(self) -> str:
+        """``stable`` | ``unstable`` | ``insufficient evidence``.
+
+        Separated from :attr:`is_stable` because a walk-forward that produced
+        two trades has not shown instability, it has shown nothing, and
+        reporting that as a plain failure invites exactly the wrong reaction
+        (retune until the flag turns green).
+        """
+        scored = self.scored_slices
+        if len(scored) < self.MIN_SCORED_SLICES:
+            return "insufficient evidence"
         positive = sum(1 for s in scored if s.report.expectancy_per_dollar > 0)
-        return positive / len(scored) >= 0.6
+        return "stable" if positive / len(scored) >= 0.6 else "unstable"
+
+    def stability_detail(self) -> str:
+        """One line naming why the verdict came out the way it did."""
+        scored = self.scored_slices
+        if len(scored) < self.MIN_SCORED_SLICES:
+            return (
+                f"only {len(scored)} of {len(self.slices)} slice(s) reached "
+                f"{self.MIN_TRADES_PER_SCORED_SLICE} trades; "
+                f"{self.MIN_SCORED_SLICES} needed to judge stability"
+            )
+        positive = sum(1 for s in scored if s.report.expectancy_per_dollar > 0)
+        return (
+            f"{positive} of {len(scored)} scored slice(s) had positive "
+            f"expectancy (60% needed)"
+        )
 
     def table(self) -> str:
         headers = [
@@ -130,6 +172,8 @@ class WalkForwardResult:
         path.write_text(json.dumps({
             "manifest": self.manifest,
             "is_stable": self.is_stable,
+            "stability": self.stability,
+            "stability_detail": self.stability_detail(),
             "slices": [s.row() for s in self.slices],
             "combined": self.combined.as_dict(),
             "combined_calibration": (
@@ -329,3 +373,110 @@ def run_walkforward(
             "config": settings.redacted_dict(),
         },
     )
+
+
+@dataclass
+class SeedSweepResult:
+    """Several independent walk-forwards, reported together.
+
+    One walk-forward over a few hundred five-minute windows yields twenty to
+    forty trades.  At that count the P&L is dominated by which side of a
+    handful of coin flips landed, so a single run -- ours included -- cannot
+    distinguish a working strategy from a lucky seed.  Reporting the spread is
+    the only defensible way to quote these numbers.
+    """
+
+    runs: list[tuple[int, WalkForwardResult]]
+    label: str = "seed sweep"
+
+    @property
+    def pooled_trades(self) -> list[TradeRecord]:
+        return [t for _, run in self.runs for s in run.slices for t in s.trades]
+
+    @property
+    def pooled(self) -> PerformanceReport:
+        """Aggregate of every trade from every seed.
+
+        Path-dependent fields (drawdown, streaks, the equity curve) are
+        meaningless here -- concatenating independent worlds is not a path --
+        so :meth:`summary` prints only the fields that survive pooling.
+        """
+        return evaluate_trades(self.pooled_trades)
+
+    @property
+    def seeds_profitable(self) -> int:
+        return sum(1 for _, r in self.runs if r.combined.total_pnl > 0)
+
+    def summary(self) -> str:
+        pooled = self.pooled
+        pnls = sorted(r.combined.total_pnl for _, r in self.runs)
+        n = len(self.runs)
+        median = (
+            pnls[n // 2] if n % 2 else (pnls[n // 2 - 1] + pnls[n // 2]) / 2.0
+        ) if pnls else float("nan")
+        lines = [
+            f"seeds                 {n}",
+            f"seeds profitable      {self.seeds_profitable}/{n}",
+            f"P&L      worst {pnls[0]:+.2f}   median {median:+.2f}   "
+            f"best {pnls[-1]:+.2f}" if pnls else "P&L      n/a",
+            "",
+            "pooled over every seed (path-dependent fields omitted: the seeds",
+            "are independent worlds, so their concatenation is not a path)",
+            f"trades                {pooled.trades}",
+            f"win rate              {pooled.win_rate:.2%} "
+            f"({pooled.wins}W/{pooled.losses}L)",
+            f"total P&L             {pooled.total_pnl:+.2f}",
+            f"expectancy/$ staked   {pooled.expectancy_per_dollar:+.4f}",
+            f"profit factor         {pooled.profit_factor:.3f}",
+            f"avg edge at entry     {pooled.avg_edge:+.4f}",
+            f"realised - expected   {pooled.realised_vs_expected_edge:+.4f}",
+        ]
+        return "\n".join(lines)
+
+    def table(self) -> str:
+        headers = ["seed", "trades", "win%", "pnl", "exp/$", "pf", "stability"]
+        rows = [
+            [
+                str(seed), str(r.combined.trades), f"{r.combined.win_rate:.1%}",
+                f"{r.combined.total_pnl:+.2f}",
+                f"{r.combined.expectancy_per_dollar:+.5f}",
+                f"{r.combined.profit_factor:.3f}", r.stability,
+            ]
+            for seed, r in self.runs
+        ]
+        widths = [
+            max(len(h), *(len(row[i]) for row in rows)) if rows else len(h)
+            for i, h in enumerate(headers)
+        ]
+        header_line = "  ".join(h.ljust(w) for h, w in zip(headers, widths))
+        separator = "  ".join("-" * w for w in widths)
+        body = "\n".join(
+            "  ".join(c.ljust(w) for c, w in zip(row, widths)) for row in rows
+        )
+        return f"{header_line}\n{separator}\n{body}"
+
+    def as_dict(self) -> dict[str, Any]:
+        pooled = self.pooled
+        return {
+            "label": self.label,
+            "seeds": [seed for seed, _ in self.runs],
+            "seeds_profitable": self.seeds_profitable,
+            "per_seed": [
+                {"seed": seed, **r.combined.as_dict()} for seed, r in self.runs
+            ],
+            "pooled": {
+                "trades": pooled.trades,
+                "win_rate": pooled.win_rate,
+                "total_pnl": pooled.total_pnl,
+                "expectancy_per_dollar": pooled.expectancy_per_dollar,
+                "profit_factor": pooled.profit_factor,
+                "avg_edge": pooled.avg_edge,
+                "realised_vs_expected_edge": pooled.realised_vs_expected_edge,
+            },
+        }
+
+    def save(self, path: Path) -> Path:
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(self.as_dict(), indent=2, default=str))
+        return path

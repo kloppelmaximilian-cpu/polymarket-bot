@@ -80,7 +80,7 @@ because it addressed a problem that actually showed up in measurement:
   distribution, because it preserves losing streaks where an i.i.d. bootstrap
   destroys them.
 
-## Three findings that changed the design
+## Four findings that changed the design
 
 ### 1. Microstructure noise makes naive volatility useless here
 
@@ -160,6 +160,52 @@ strike for a window that has not opened), moneyness error is exactly
 
 The lesson is about method, not about strikes: a validation harness is only
 useful if you take its disagreements seriously instead of explaining them away.
+
+### 4. A single walk-forward run says nothing, including ours
+
+The walk-forward with a fitted logistic model was run over seven synthetic
+seeds, identical in every other parameter (`--windows 60 --efficiency 0.30
+--slices 4 --model logistic`, now reproducible as `bot walkforward --seeds 7`):
+
+| Seed | Trades | Win rate | P&L | Expectancy/$ |
+|---|---|---|---|---|
+| 1 | 16 | 81.2% | −14.53 | −0.0757 |
+| 5 | 28 | 89.3% | **+26.57** | +0.0832 |
+| 11 | 37 | 81.1% | −26.66 | −0.0811 |
+| 23 | 21 | 71.4% | −15.67 | −0.0845 |
+| 42 | 44 | 77.3% | −38.90 | −0.0810 |
+| 77 | 33 | 81.8% | +28.66 | +0.0960 |
+| 101 | 27 | 77.8% | +24.85 | +0.1026 |
+| **pooled** | **206** | **80.1%** | **−15.69** | **−0.0077** |
+
+Three of seven seeds profitable, and a spread from −38.90 to +28.66 around a
+pooled result of roughly zero. An earlier version of this document reported
+seed 5 on its own. That number is real and reproducible, and it is also the
+best of seven — quoting it alone was the mistake, not the measurement.
+
+Two things are worth extracting.
+
+**The win rate is not the story.** Every seed wins 71–89% of its trades and
+four of them still lose money. On a binary market the bot mostly buys
+favourites, so the modal trade is a small win and the tail trade is a total
+loss of the stake. Any win rate below `1 − p` at the average entry price `p` is
+a losing strategy, and 80% at an average entry near 0.80 is exactly break-even
+before costs. **Win rate on binaries is close to uninformative** and it is the
+first number a dashboard tempts you to optimise.
+
+**The gate still overstates its own edge.** Pooled across 206 trades the
+average net edge claimed at entry was +8.2 points per share while the realised
+edge was about 1 point *worse than zero* — a residual overstatement of roughly
+ten points. Market anchoring at `w = 0.35` reduced the adverse selection that
+finding 2 describes; it did not remove it. The remaining gap is our own
+estimation error being selected for, and it is the strongest argument in this
+repository for fitting `MARKET_ANCHOR_WEIGHT` on real data before trading it.
+
+What was deliberately *not* done: lowering the anchor weight until the synthetic
+sweep turned positive. The generator's mispricing is a parameter chosen here, so
+tuning against it optimises a number nobody will ever be paid for. The
+`--seeds` flag exists so the spread is reported by default rather than
+discovered later.
 
 ## What was rejected
 

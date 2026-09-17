@@ -14,7 +14,12 @@ from pydantic import ValidationError
 
 from pmbot.config import Settings, TradingMode
 from pmbot.execution.live import LiveTradingNotArmed, LiveVenue, _mask, _tick_literal
-from pmbot.logging_setup import JsonFormatter, SecretRedactingFilter
+from pmbot.logging_setup import (
+    JsonFormatter,
+    SecretRedactingFilter,
+    install_loop_exception_handler,
+    loop_exception_handler,
+)
 from pmbot.polymarket.auth import (
     ApiCreds,
     build_hmac_signature,
@@ -210,3 +215,83 @@ class TestTickLiterals:
 
     def test_unknown_tick_falls_back_to_the_safe_value(self):
         assert _tick_literal(0.005) == "0.01"
+
+
+class TestLoopExceptionHandler:
+    """An exception in a loop callback must stay visible without crying wolf.
+
+    asyncio routes those to the loop handler, never to the ``except`` block
+    around the thing that failed, so without this the two failure classes are
+    indistinguishable in the log: a proxy refusing a websocket (expected, the
+    feed is already reconnecting) and a genuine bug in a callback.
+    """
+
+    @staticmethod
+    def _context(message: str, exc: BaseException | None) -> dict:
+        return {"message": message, "exception": exc}
+
+    def test_a_real_callback_failure_is_an_error(self, caplog):
+        caplog.set_level(logging.DEBUG)
+        loop_exception_handler(
+            None, self._context("Task exception was never retrieved", KeyError("side")),
+        )
+        records = [r for r in caplog.records if r.name == "pmbot.asyncio"]
+        assert len(records) == 1
+        assert records[0].levelno == logging.ERROR
+        assert records[0].error == "KeyError: 'side'"
+
+    def test_the_websockets_proxy_artefact_is_demoted(self, caplog):
+        caplog.set_level(logging.DEBUG)
+        loop_exception_handler(
+            None,
+            self._context(
+                "Exception in callback _SelectorSocketTransport._call_connection_lost",
+                AttributeError("'NoneType' object has no attribute 'status_code'"),
+            ),
+        )
+        records = [r for r in caplog.records if r.name == "pmbot.asyncio"]
+        assert len(records) == 1, "demoted, not dropped: it must still be logged"
+        assert records[0].levelno == logging.DEBUG
+
+    def test_a_similar_looking_but_different_failure_stays_an_error(self, caplog):
+        """Only the exact combination is benign, not either half of it."""
+        caplog.set_level(logging.DEBUG)
+        loop_exception_handler(
+            None,
+            self._context(
+                "Exception in callback _SelectorSocketTransport._call_connection_lost",
+                RuntimeError("book writer died"),
+            ),
+        )
+        assert [r for r in caplog.records if r.name == "pmbot.asyncio"][0].levelno == (
+            logging.ERROR
+        )
+
+    def test_a_context_without_an_exception_still_reports(self, caplog):
+        caplog.set_level(logging.DEBUG)
+        loop_exception_handler(None, {"message": "socket.send() raised exception."})
+        record = [r for r in caplog.records if r.name == "pmbot.asyncio"][0]
+        assert record.levelno == logging.ERROR
+        assert record.error is None
+
+    def test_secrets_in_a_loop_exception_are_redacted(self):
+        formatter = JsonFormatter()
+        redactor = SecretRedactingFilter()
+        record = logging.LogRecord(
+            "pmbot.asyncio", logging.ERROR, __file__, 0,
+            "Task exception was never retrieved", (), None,
+        )
+        record.error = f"ApiError: private_key={'0' * 63}1 rejected"
+        redactor.filter(record)
+        assert "0" * 63 not in formatter.format(record)
+
+    async def test_install_targets_the_running_loop(self):
+        import asyncio
+
+        install_loop_exception_handler()
+        assert asyncio.get_running_loop().get_exception_handler() is (
+            loop_exception_handler
+        )
+
+    def test_install_outside_a_loop_is_a_no_op(self):
+        install_loop_exception_handler()          # must not raise

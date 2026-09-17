@@ -98,9 +98,48 @@ and reporting performance on that same history measures how well the model
 memorised, which on a few hundred five-minute windows is close to perfect and
 completely meaningless.
 
-`is_stable` requires positive expectancy in at least 60% of slices with five or
-more trades. A strategy that works in two slices and fails in three is not a
-strategy.
+The run reports one of three verdicts, never a bare pass/fail:
+
+| verdict | meaning |
+| --- | --- |
+| `stable` | positive expectancy in at least 60% of scored slices |
+| `unstable` | it traded enough to judge, and the majority lost |
+| `insufficient evidence` | fewer than three slices reached five trades |
+
+A slice is *scored* only once it has five trades, and the verdict needs three
+scored slices. The third verdict exists because it is the one that actually
+happens on five-minute markets: a run that produced two trades has not shown
+instability, it has shown nothing. Collapsing that into `False` invites
+retuning until the flag turns green, which is how you overfit a backtest.
+`stability_detail()` names which case applies and why.
+
+A strategy that works in two slices and fails in three is not a strategy.
+Note that the verdict is about *consistency*, not profitability: a run can be
+`stable` and still lose money overall if the slice that lost, lost big. Read it
+next to the pooled P&L, never instead of it.
+
+### Reporting the spread, not the best run
+
+One walk-forward over a few hundred windows produces twenty to forty trades. At
+that count the P&L is decided by a handful of coin flips, so a single number --
+including a flattering one -- is not evidence:
+
+```bash
+bot walkforward --windows 60 --efficiency 0.30 --seeds 7
+```
+
+This runs the whole walk-forward once per seed and reports every seed, the
+worst/median/best P&L, and the pooled result over all trades. Path-dependent
+statistics (drawdown, streaks) are deliberately omitted from the pooled block,
+because concatenating independent worlds does not make a path.
+
+`--seeds` needs synthetic sessions and is refused with `--session-file`: one
+recorded session is one world, and replaying it N times answers nothing.
+
+The measured spread for this repository is in
+[RESEARCH.md](RESEARCH.md#4-a-single-walk-forward-run-says-nothing-including-ours)
+— three of seven seeds profitable, pooled expectancy slightly negative. That is
+the honest state of the strategy layer, and it is why the defaults trade rarely.
 
 ## Model selection
 

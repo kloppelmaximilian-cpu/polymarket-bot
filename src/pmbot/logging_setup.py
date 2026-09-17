@@ -163,3 +163,60 @@ class ContextLogger(logging.LoggerAdapter):
 def get_logger(name: str, **context: Any) -> ContextLogger:
     """Logger that accepts structured keyword context via ``extra=``."""
     return ContextLogger(logging.getLogger(name), context)
+
+
+# --- unhandled asyncio callback exceptions ---------------------------------
+#
+# Exceptions raised inside a loop callback (rather than inside something we
+# await) never reach our own try/except blocks.  asyncio's default handler
+# prints them, which loses the structured format and -- worse -- reports
+# conditions a component already handled at ERROR severity, so a blocked
+# outbound proxy looks exactly like a real fault.  The handler below keeps
+# every one of them visible while reserving ERROR for the ones that are news.
+
+_BENIGN_LOOP_ARTEFACTS: tuple[tuple[str, ...], ...] = (
+    # websockets dereferences an unparsed HTTP response when the transport is
+    # dropped before any reply arrives -- which is what a proxy answering 403
+    # to CONNECT looks like from inside the library.  The owning feed raises
+    # from `connect()`, logs it and reconnects with backoff; re-reporting the
+    # same event at ERROR from the loop would bury genuine faults.
+    ("_call_connection_lost", "status_code"),
+)
+
+
+def _is_benign_loop_artefact(text: str) -> bool:
+    return any(all(token in text for token in tokens)
+               for tokens in _BENIGN_LOOP_ARTEFACTS)
+
+
+def loop_exception_handler(_loop: Any, context: dict[str, Any]) -> None:
+    """Route unhandled loop exceptions through the structured logger.
+
+    Signature is fixed by ``loop.set_exception_handler``.
+    """
+    log = get_logger("pmbot.asyncio")
+    exc = context.get("exception")
+    message = str(context.get("message", "")) or "unhandled loop exception"
+    fingerprint = f"{message} {exc!r} {context.get('handle')!r}"
+    extra = {
+        "event": message,
+        "error": f"{type(exc).__name__}: {exc}"[:200] if exc else None,
+        "future": str(context.get("future") or context.get("handle") or "")[:200],
+    }
+    if _is_benign_loop_artefact(fingerprint):
+        # Handled elsewhere: keep it for debugging, keep it out of the alerts.
+        log.debug("loop artefact (already handled by its component)", extra=extra)
+        return
+    log.error(message, extra=extra, exc_info=exc if exc else False)
+
+
+def install_loop_exception_handler(loop: Any | None = None) -> None:
+    """Install :func:`loop_exception_handler` on the running event loop."""
+    import asyncio
+
+    target = loop
+    if target is None:
+        with contextlib.suppress(RuntimeError):
+            target = asyncio.get_running_loop()
+    if target is not None:
+        target.set_exception_handler(loop_exception_handler)

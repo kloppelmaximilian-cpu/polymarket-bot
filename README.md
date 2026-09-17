@@ -230,20 +230,65 @@ over 12 seeds per level:
 with two-scale realized variance; without it the pricer is systematically
 under-confident and every edge calculation is wrong.
 
+### Walk-forward across seeds (synthetic)
+
+With a logistic model fitted only on earlier slices, seven otherwise identical
+synthetic worlds (`bot walkforward --windows 60 --efficiency 0.30 --seeds 7`)
+give:
+
+| Seed | Trades | Win rate | P&L |
+|---|---|---|---|
+| 1 | 16 | 81.2% | −14.53 |
+| 5 | 28 | 89.3% | +26.57 |
+| 11 | 37 | 81.1% | −26.66 |
+| 23 | 21 | 71.4% | −15.67 |
+| 42 | 44 | 77.3% | −38.90 |
+| 77 | 33 | 81.8% | +28.66 |
+| 101 | 27 | 77.8% | +24.85 |
+| **pooled** | **206** | **80.1%** | **−15.69** |
+
+**Three of seven profitable, pooled expectancy −0.77% per dollar staked.** So:
+this repository does *not* demonstrate a positive-expectancy strategy, in a
+synthetic world or a real one. It demonstrates an engine that prices, gates,
+sizes, executes and accounts correctly, and a validation harness honest enough
+to say when the strategy on top of it has not been shown to work. Quoting seed
+5 alone — as an earlier draft of this README did — would have been the exact
+failure mode `--seeds` exists to prevent.
+
+Note also that every seed wins 71–89% of its trades and four still lose money.
+Buying favourites on a binary market makes win rate nearly uninformative:
+small wins, whole-stake losses.
+
 ### Robustness
 
-`bot backtest` runs a stationary bootstrap and ten stress scenarios. On a
-sample of trades with a 2.5-point average edge:
+`bot backtest` runs a stationary bootstrap and ten stress scenarios over the
+trades it actually took. To ask what a thin edge is worth under worse
+assumptions, `scripts/robustness_demo.py` feeds the same machinery a sample
+whose edge is *stipulated* rather than produced by our model -- 240 trades at a
+2.5-point edge, 1.5 points of it real:
+
+```bash
+python scripts/robustness_demo.py      # reproduces this table exactly
+```
 
 ```
-slippage +1 tick          profitable
-slippage +2 ticks         NOT profitable
-fees +50%                 profitable
-model 2pp overconfident   NOT profitable
-10% orders fail           profitable
-latency eats 30% of edge  profitable
-combined adverse          NOT profitable
+baseline                  +106.73  profitable
+slippage +1 tick           +11.09  profitable
+slippage +2 ticks          -84.41  NOT profitable
+spread doubles             +58.89  profitable
+fees +50%                  +25.37  profitable
+model 2pp overconfident   -213.27  NOT profitable
+model 5pp overconfident   -413.27  NOT profitable
+10% orders fail           +149.56  profitable
+latency eats 30% of edge   +34.99  profitable
+combined adverse          -336.82  NOT profitable
 ```
+
+The stipulated edge is deliberate. The engine's own synthetic runs take a
+handful of trades -- far too few for ten scenarios to mean anything -- and
+choosing the edge separates *cost sensitivity* from noise in our own signal.
+Read the rows as arithmetic about Polymarket's cost structure, not as a
+measurement of this bot.
 
 The lesson is blunt and worth internalising: **the edge on these markets is thin
 relative to costs, so calibration accuracy is the binding constraint.** A model
@@ -251,7 +296,7 @@ two points overconfident turns a winning strategy into a losing one.
 
 ### Tests
 
-765 tests, all passing in about 50 seconds:
+787 tests, all passing in about 45 seconds:
 
 ```bash
 make test          # full suite
@@ -301,7 +346,7 @@ bot doctor                      # environment and connectivity check
 bot config                      # effective config, secrets redacted
 bot session                     # build a replay session from recorded data
 bot backtest [--session-file f] # backtest + robustness
-bot walkforward                 # walk-forward validation
+bot walkforward --seeds 7       # walk-forward validation over N worlds
 bot train                       # benchmark models, fit the winner
 ```
 

@@ -584,6 +584,9 @@ def walkforward(
     slices: int = typer.Option(4, help="number of walk-forward slices"),
     model: str = typer.Option("logistic", help="model kind, or 'none' for analytic only"),
     seed: int = typer.Option(42),
+    seeds: int = typer.Option(
+        1, help="repeat over N synthetic seeds and report the spread"
+    ),
     out: Path | None = typer.Option(None),
 ) -> None:
     """Walk-forward validation: each slice traded with a model fitted only on
@@ -593,25 +596,60 @@ def walkforward(
         SyntheticConfig,
         generate_synthetic_session,
     )
-    from .backtesting.walkforward import run_walkforward
+    from .backtesting.walkforward import SeedSweepResult, run_walkforward
     from .logging_setup import setup_logging
 
     settings = get_settings()
     setup_logging("WARNING", settings.log_dir, settings.log_json)
 
-    if session_file:
-        session = ReplaySession.load(session_file)
-    else:
-        console.print("[yellow]Generating a SYNTHETIC session (engine validation only).[/yellow]")
-        session = generate_synthetic_session(SyntheticConfig(
-            assets=tuple(settings.assets[:3]), windows=windows, seed=seed,
-            market_efficiency=efficiency,
-        ))
+    def run_one(run_seed: int):
+        if session_file:
+            session = ReplaySession.load(session_file)
+        else:
+            session = generate_synthetic_session(SyntheticConfig(
+                assets=tuple(settings.assets[:3]), windows=windows, seed=run_seed,
+                market_efficiency=efficiency,
+            ))
+        return run_walkforward(
+            settings, session, n_slices=slices,
+            model_kind=None if model == "none" else model, seed=run_seed,
+        )
 
-    result = run_walkforward(
-        settings, session, n_slices=slices,
-        model_kind=None if model == "none" else model, seed=seed,
-    )
+    if seeds < 1:
+        console.print("[red]--seeds must be at least 1[/]")
+        raise typer.Exit(2)
+    if seeds > 1 and session_file:
+        console.print(
+            "[red]--seeds needs a synthetic session: one recorded session is "
+            "one world, and re-running it changes nothing.[/]"
+        )
+        raise typer.Exit(2)
+
+    if not session_file:
+        console.print(
+            "[yellow]Generating a SYNTHETIC session (engine validation only).[/yellow]"
+        )
+
+    if seeds > 1:
+        runs = []
+        for offset in range(seeds):
+            run_seed = seed + offset
+            console.print(f"[dim]seed {run_seed} ({offset + 1}/{seeds})...[/]")
+            runs.append((run_seed, run_one(run_seed)))
+        sweep = SeedSweepResult(runs=runs, label=f"{seeds} seeds from {seed}")
+        console.print("\n=== Walk-forward per seed (each fully out of sample) ===")
+        console.print(sweep.table())
+        console.print("\n=== Across seeds ===")
+        console.print(sweep.summary())
+        console.print(
+            "\n[yellow]Twenty to forty trades per seed is too few to call a "
+            "P&L. Read the spread, not the best row.[/]"
+        )
+        if out:
+            console.print(f"saved: {sweep.save(out / 'walkforward_seeds.json')}")
+        return
+
+    result = run_one(seed)
     console.print("=== Walk-forward slices (each out of sample) ===")
     console.print(result.table())
     console.print("\n=== Combined ===")
@@ -624,9 +662,12 @@ def walkforward(
             f"ece={report.ece:.4f} (floor {report.ece_noise_floor:.4f}, "
             f"excess {report.ece_excess:+.4f})"
         )
+    colour = {
+        "stable": "green", "unstable": "red", "insufficient evidence": "yellow",
+    }[result.stability]
     console.print(
-        f"\nstable across slices: "
-        f"[{'green' if result.is_stable else 'red'}]{result.is_stable}[/]"
+        f"\nstable across slices: [{colour}]{result.stability}[/] "
+        f"({result.stability_detail()})"
     )
     if out:
         console.print(f"saved: {result.save(out / 'walkforward.json')}")
