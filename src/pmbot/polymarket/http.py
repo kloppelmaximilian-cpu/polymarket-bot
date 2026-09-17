@@ -31,6 +31,20 @@ class ApiError(RuntimeError):
         return self.status is None or self.status in RETRYABLE_STATUS
 
 
+class HostUnreachable(ApiError):
+    """The circuit breaker is open: this host is not answering at all.
+
+    Raised immediately, without a network attempt. When a host is unreachable
+    -- blocked egress, DNS failure, an outage -- retrying each of a dozen
+    endpoints with exponential backoff turns a two-second diagnosis into a
+    four-minute hang, and hammers a service that may simply be down.
+    """
+
+    @property
+    def is_retryable(self) -> bool:
+        return False
+
+
 class RateLimiter:
     """Simple token bucket; keeps us well inside published request budgets."""
 
@@ -65,15 +79,43 @@ class HttpClient:
         rate_per_sec: float = 8.0,
         max_retries: int = 3,
         name: str = "http",
+        breaker_threshold: int = 3,
+        breaker_cooldown: float = 30.0,
     ):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.max_retries = max_retries
         self.limiter = RateLimiter(rate_per_sec)
         self.log = get_logger(f"pmbot.http.{name}")
+        self.name = name
         self._client: httpx.AsyncClient | None = None
         self.requests = 0
         self.errors = 0
+        #: consecutive transport failures before the breaker opens
+        self.breaker_threshold = breaker_threshold
+        self.breaker_cooldown = breaker_cooldown
+        self._transport_failures = 0
+        self._breaker_open_until = 0.0
+
+    @property
+    def is_reachable(self) -> bool:
+        return time.monotonic() >= self._breaker_open_until
+
+    def _note_transport_failure(self, detail: str) -> None:
+        self._transport_failures += 1
+        if self._transport_failures >= self.breaker_threshold:
+            self._breaker_open_until = time.monotonic() + self.breaker_cooldown
+            self.log.warning(
+                "host unreachable, pausing requests",
+                extra={
+                    "host": self.base_url, "failures": self._transport_failures,
+                    "cooldown": self.breaker_cooldown, "detail": detail[:160],
+                },
+            )
+
+    def _note_success(self) -> None:
+        self._transport_failures = 0
+        self._breaker_open_until = 0.0
 
     async def __aenter__(self) -> HttpClient:
         await self.start()
@@ -104,6 +146,14 @@ class HttpClient:
         headers: dict[str, str] | None = None,
         content: str | None = None,
     ) -> Any:
+        if not self.is_reachable:
+            raise HostUnreachable(
+                f"{self.base_url} is unreachable "
+                f"({self._transport_failures} consecutive transport failures); "
+                f"not retrying for {self.breaker_cooldown:.0f}s",
+                None,
+            )
+
         await self.start()
         assert self._client is not None
         url = path if path.startswith("http") else f"{self.base_url}{path}"
@@ -119,7 +169,14 @@ class HttpClient:
                 )
             except (httpx.TimeoutException, httpx.TransportError) as exc:
                 last = ApiError(f"{type(exc).__name__}: {exc}", None)
+                self._note_transport_failure(str(exc))
+                if not self.is_reachable:
+                    self.errors += 1
+                    raise HostUnreachable(
+                        f"{self.base_url} is unreachable: {last}", None
+                    ) from exc
             else:
+                self._note_success()
                 if response.status_code == 200:
                     try:
                         return response.json()

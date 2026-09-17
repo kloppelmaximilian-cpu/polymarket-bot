@@ -28,7 +28,7 @@ from ..core.clock import Clock, default_clock
 from ..core.types import Market
 from ..logging_setup import get_logger
 from .gamma import GammaClient
-from .http import ApiError
+from .http import ApiError, HostUnreachable
 from .parsers import detect_asset, detect_window_seconds, parse_market
 
 
@@ -152,6 +152,13 @@ class MarketDiscovery:
             for slug in slugs:
                 try:
                     rows = await self.gamma.events_by_series_slug(slug)
+                except HostUnreachable as exc:
+                    # No point probing eleven more slugs against a host that is
+                    # not answering; report once and give up this cycle.
+                    self.stats.last_error = str(exc)
+                    self.log.warning("gamma unreachable, abandoning this cycle",
+                                     extra={"error": str(exc)[:200]})
+                    return events
                 except ApiError as exc:
                     self.stats.last_error = f"{slug}: {exc}"
                     self.log.warning(

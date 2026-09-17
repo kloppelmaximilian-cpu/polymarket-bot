@@ -282,3 +282,80 @@ class TestSummary:
         assert summary["total"] == 2
         assert summary["live"] == 1
         assert summary["upcoming"] == 1
+
+
+class TestUnreachableHost:
+    """A host that is not answering must be diagnosed in seconds, not minutes.
+
+    Retrying a dozen endpoints with exponential backoff against a blocked or
+    down host turns a two-second diagnosis into a multi-minute hang.
+    """
+
+    async def test_probing_stops_at_the_first_unreachable_error(self, base):
+        from pmbot.polymarket.http import HostUnreachable
+
+        class Unreachable(FakeGamma):
+            def __init__(self):
+                super().__init__()
+                self.attempts = 0
+
+            async def events_by_series_slug(self, series_slug, limit=500, closed=False):
+                self.attempts += 1
+                raise HostUnreachable("gamma-api is unreachable", None)
+
+            async def active_events(self, limit=500, offset=0, order="endDate"):
+                raise HostUnreachable("gamma-api is unreachable", None)
+
+        gamma = Unreachable()
+        engine = discovery(gamma, assets=("BTC", "ETH", "SOL", "XRP", "DOGE"))
+        assert await engine.discover() == []
+        # One attempt, not one per asset per template.
+        assert gamma.attempts == 1
+        assert "unreachable" in engine.stats.last_error
+
+
+class TestCircuitBreaker:
+    def test_opens_after_repeated_transport_failures(self):
+        from pmbot.polymarket.http import HttpClient
+
+        client = HttpClient("https://example.invalid", breaker_threshold=3,
+                            breaker_cooldown=30.0)
+        assert client.is_reachable
+        for _ in range(2):
+            client._note_transport_failure("connection refused")
+        assert client.is_reachable
+        client._note_transport_failure("connection refused")
+        assert not client.is_reachable
+
+    def test_a_success_closes_it(self):
+        from pmbot.polymarket.http import HttpClient
+
+        client = HttpClient("https://example.invalid", breaker_threshold=2)
+        client._note_transport_failure("x")
+        client._note_transport_failure("x")
+        assert not client.is_reachable
+        client._note_success()
+        assert client.is_reachable
+
+    async def test_open_breaker_raises_without_a_network_attempt(self):
+        from pmbot.polymarket.http import HostUnreachable, HttpClient
+
+        client = HttpClient("https://example.invalid", breaker_threshold=1)
+        client._note_transport_failure("x")
+        with pytest.raises(HostUnreachable, match="unreachable"):
+            await client.get("/anything")
+        # Nothing was sent: the request counter did not move.
+        assert client.requests == 0
+
+    def test_unreachable_is_not_retryable(self):
+        from pmbot.polymarket.http import HostUnreachable
+
+        assert HostUnreachable("x").is_retryable is False
+
+    def test_http_errors_do_not_open_the_breaker(self):
+        """A 404 means the host is fine and the path is wrong."""
+        from pmbot.polymarket.http import HttpClient
+
+        client = HttpClient("https://example.invalid", breaker_threshold=2)
+        client._note_success()
+        assert client.is_reachable

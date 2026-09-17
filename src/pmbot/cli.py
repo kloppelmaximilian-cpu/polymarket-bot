@@ -317,6 +317,26 @@ def discover(
         finally:
             await gamma.close()
 
+        if not found:
+            reason = discovery.stats.last_error or "no matching markets returned"
+            console.print("[yellow]No 5-minute crypto markets found.[/yellow]")
+            console.print(f"reason: {reason}")
+            if "unreachable" in reason.lower() or "connect" in reason.lower():
+                console.print(
+                    "[yellow]The Polymarket API is not reachable from this host. "
+                    "Check egress to gamma-api.polymarket.com, then run "
+                    "`bot doctor`.[/yellow]"
+                )
+            elif discovery.stats.reject_reasons:
+                console.print(f"rejected: {discovery.stats.reject_reasons}")
+            else:
+                console.print(
+                    "The API answered but returned nothing for these series "
+                    "slugs. If Polymarket has renamed the series, set "
+                    "SERIES_SLUG_TEMPLATES (see docs/CONFIG.md)."
+                )
+            return 1
+
         console.print(f"series resolved: {discovery.series_by_asset}")
         console.print(f"summary: {summarise(found)}")
         table = Table("asset", "slug", "window (UTC)", "left", "tick", "min", "fee")
@@ -483,6 +503,19 @@ def backtest(
                   f"tradable={result.diagnostics['tradable']} "
                   f"orders={result.diagnostics['orders']}")
     console.print(f"top blockers: {result.diagnostics['top_blockers'][:8]}")
+
+    if result.report.trades == 0:
+        anchor = settings.market_anchor_weight
+        console.print(
+            f"\n[yellow]No trades were taken. That is the expected outcome "
+            f"unless the market is clearly mispriced: MARKET_ANCHOR_WEIGHT is "
+            f"{anchor:.2f}, so the model's disagreement with the market is "
+            f"shrunk to roughly {anchor:.0%} before it counts as edge.\n"
+            f"The blockers above say which condition failed. To explore a more "
+            f"mispriced world, lower --efficiency; to see the effect of trusting "
+            f"the model more, raise MARKET_ANCHOR_WEIGHT (and read "
+            f"docs/CONFIG.md on fitting it from real data first).[/yellow]"
+        )
 
     if robustness and result.trades:
         report = run_robustness(
