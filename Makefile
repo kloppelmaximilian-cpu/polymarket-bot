@@ -4,7 +4,8 @@ PY := $(VENV)/bin/python
 BOT := $(VENV)/bin/bot
 
 .PHONY: help install run dashboard status doctor discover test test-fast \
-        lint validate backtest walkforward train session clean db-size
+        lint validate accept backtest walkforward seeds robustness train \
+        session clean db-size
 
 help:  ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -44,11 +45,20 @@ lint:  ## Lint with ruff
 validate:  ## Synthetic engine validation (correctness, not alpha)
 	$(PY) scripts/validate_engine.py
 
+accept:  ## Run the acceptance checklist against the real modules
+	$(PY) scripts/acceptance_check.py
+
 backtest:  ## Synthetic backtest with robustness testing
 	$(BOT) backtest --windows 24 --efficiency 0.4
 
-walkforward:  ## Walk-forward validation
+walkforward:  ## Walk-forward validation (one world)
 	$(BOT) walkforward --windows 60 --slices 4
+
+seeds:  ## Walk-forward across 7 worlds -- read the spread, not one run
+	$(BOT) walkforward --windows 60 --efficiency 0.30 --seeds 7
+
+robustness:  ## Cost sensitivity of a stipulated thin edge
+	$(PY) scripts/robustness_demo.py
 
 session:  ## Build a replay session from recorded paper data
 	$(BOT) session --hours 24 --out data/recorded.json

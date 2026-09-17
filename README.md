@@ -301,6 +301,7 @@ two points overconfident turns a winning strategy into a losing one.
 ```bash
 make test          # full suite
 make test-fast     # skip the slow backtests
+make accept        # the acceptance checklist, run against the real modules
 ```
 
 They include a negative control (no trades against a correctly priced market),
