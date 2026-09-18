@@ -55,6 +55,20 @@ def _num(value: Any, digits: int = 4) -> str:
         return "--"
 
 
+def _unknown_or(value: Any, digits: int = 0) -> str:
+    """A dash for unmeasurable, never a confident zero.
+
+    Venues that omit timestamps make latency and clock drift unknowable, and
+    "0 ms" in a health panel reads as a perfect link rather than as silence.
+    """
+    if value is None:
+        return "-"
+    try:
+        return f"{float(value):.{digits}f}"
+    except (TypeError, ValueError):
+        return "-"
+
+
 def _clock(seconds: Any) -> Text:
     if seconds is None:
         return Text("--", style="dim")
@@ -406,11 +420,11 @@ def feeds_panel(state: DashboardState) -> Panel:
         table.add_row(
             Text(str(feed.get("name", "?")), style="bold"),
             Text(status, style=STATUS_STYLES.get(status, "white")),
-            f"{float(feed.get('latency_ms') or 0):.0f}",
+            _unknown_or(feed.get("latency_ms"), 0),
             f"{float(feed.get('messages_per_sec') or 0):.1f}",
             str(feed.get("reconnects", 0)),
             str(feed.get("errors", 0)),
-            f"{float(feed.get('clock_drift_ms') or 0):.0f}",
+            _unknown_or(feed.get("clock_drift_ms"), 0),
             f"{float(feed.get('score') or 0):.2f}",
             Text(str(feed.get("detail", ""))[:26], style="dim"),
         )

@@ -323,9 +323,16 @@ class Tick:
     bid: float | None = None
     ask: float | None = None
     is_trade: bool = True
+    #: False when the venue sent no timestamp and `timestamp` is our receipt
+    #: time standing in for it. Latency and clock drift are then unknowable,
+    #: and must read as unknown rather than as zero.
+    venue_timestamped: bool = True
 
     @property
-    def latency(self) -> float:
+    def latency(self) -> float | None:
+        """Venue-to-us delay, or ``None`` if the venue sent no timestamp."""
+        if not self.venue_timestamped:
+            return None
         return max(0.0, self.received_at - self.timestamp)
 
 
@@ -350,8 +357,10 @@ class FeedHealth:
     messages_per_sec: float = 0.0
     reconnects: int = 0
     errors: int = 0
-    latency_ms: float = 0.0
-    clock_drift_ms: float = 0.0
+    # None means "not measurable from this venue's payloads", which is not
+    # the same as 0.0 -- and 0 ms of network latency would be a lie.
+    latency_ms: float | None = None
+    clock_drift_ms: float | None = None
     score: float = 0.0
     detail: str = ""
 

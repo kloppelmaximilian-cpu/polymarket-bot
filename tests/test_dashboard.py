@@ -306,3 +306,49 @@ class TestSimpleDashboard:
         app = build_textual_app(state_file(full_snapshot()), refresh_hz=2.0)
         assert app is not None
         assert app.sort_key == "edge"
+
+
+class TestPauseWarning:
+    """A pause reason from boot reads as a live fault minutes later."""
+
+    @staticmethod
+    def _state(**risk):
+        import time as _time
+
+        from pmbot.dashboard.state import DashboardState
+
+        payload = full_snapshot()
+        payload["ts"] = _time.time()
+        payload["risk"] = {**payload.get("risk", {}), **risk}
+        return DashboardState(connected=True, stale=False, age=0.1, payload=payload)
+
+    def test_remaining_time_is_shown_while_the_pause_holds(self):
+        import time as _time
+
+        state = self._state(
+            trading_paused=True,
+            pause_reason="system health: only 0 healthy reference feeds",
+            pause_until=_time.time() + 240,
+        )
+        warning = next(w for w in state.warnings() if "PAUSED" in w)
+        assert "for another 2" in warning          # ~240s, formatted
+        assert "only 0 healthy reference feeds" in warning
+
+    def test_an_expired_pause_drops_the_countdown(self):
+        import time as _time
+
+        state = self._state(
+            trading_paused=True, pause_reason="manual",
+            pause_until=_time.time() - 5,
+        )
+        warning = next(w for w in state.warnings() if "PAUSED" in w)
+        assert "for another" not in warning
+        assert warning.endswith("manual")
+
+    def test_a_pause_without_an_until_still_warns(self):
+        state = self._state(trading_paused=True, pause_reason="drawdown stop")
+        assert any("TRADING PAUSED: drawdown stop" in w for w in state.warnings())
+
+    def test_no_warning_when_not_paused(self):
+        state = self._state(trading_paused=False)
+        assert not any("PAUSED" in w for w in state.warnings())

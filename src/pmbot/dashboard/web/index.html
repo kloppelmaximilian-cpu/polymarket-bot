@@ -296,6 +296,8 @@ function renderFeeds(p) {
   const rows = (p.feeds || []).map((f) => {
     const cls = f.status === "ONLINE" ? "up" : f.status === "DEGRADED" ? "warn" : "down";
     return "<tr>" + td(esc(f.name)) + td(`<span class="${cls}">${esc(f.status)}</span>`)
+      // null latency means the venue sends no timestamps, so it renders as
+      // unknown. "0 ms" would read as a perfect link rather than as silence.
       + td(nf(f.latency_ms, 0)) + td(nf(f.messages_per_sec, 1))
       + td(String(f.reconnects ?? 0), (f.reconnects ?? 0) > 3 ? "warn" : "dim")
       + td(`<div class="bar"><i style="width:${Math.round((f.score ?? 0) * 100)}%"></i></div>`)

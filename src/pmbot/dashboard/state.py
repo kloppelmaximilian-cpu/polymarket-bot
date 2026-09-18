@@ -113,7 +113,17 @@ class DashboardState:
             out.append(issue)
         risk = self.risk
         if risk.get("trading_paused"):
-            out.append(f"TRADING PAUSED: {risk.get('pause_reason', 'unknown')}")
+            # The stored reason is why the pause *started*, which on a fresh
+            # boot is "no feeds yet" and reads as a live problem long after
+            # the feeds came up. What the operator needs is how much longer.
+            reason = risk.get("pause_reason") or "unknown"
+            remaining = (risk.get("pause_until") or 0.0) - time.time()
+            if remaining > 0:
+                out.append(
+                    f"TRADING PAUSED for another {remaining:.0f}s: {reason}"
+                )
+            else:
+                out.append(f"TRADING PAUSED: {reason}")
         drawdown = risk.get("drawdown", 0.0) or 0.0
         if drawdown > 0.10:
             out.append(f"drawdown {drawdown:.1%}")

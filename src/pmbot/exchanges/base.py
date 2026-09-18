@@ -111,8 +111,7 @@ class ExchangeFeed(ABC):
             with contextlib.suppress(asyncio.CancelledError):
                 await self._task
             self._task = None
-        self.health.status = FeedStatus.OFFLINE
-        self.health.detail = "stopped"
+        self._go_offline("stopped")
 
     async def run(self) -> None:
         """Connect/subscribe/read loop with exponential backoff and jitter."""
@@ -149,8 +148,7 @@ class ExchangeFeed(ABC):
                 raise
             except Exception as exc:  # noqa: BLE001 - never kill the loop
                 self.health.errors += 1
-                self.health.status = FeedStatus.OFFLINE
-                self.health.detail = f"{type(exc).__name__}: {exc}"[:200]
+                self._go_offline(f"{type(exc).__name__}: {exc}")
                 self.log.warning(
                     "connection failed", extra={"error": str(exc)[:200], "attempt": attempt}
                 )
@@ -164,7 +162,7 @@ class ExchangeFeed(ABC):
             with contextlib.suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(self._stop.wait(), timeout=delay)
 
-        self.health.status = FeedStatus.OFFLINE
+        self._go_offline(self.health.detail or "stopped")
 
     async def _read_loop(self, ws: Any) -> None:
         async for raw in ws:
@@ -223,8 +221,9 @@ class ExchangeFeed(ABC):
         self._seen_set.add(key)
 
         self._last_prices[tick.asset] = tick.price
-        self.health.latency_ms = tick.latency * 1000.0
-        self.health.clock_drift_ms = (tick.received_at - tick.timestamp) * 1000.0
+        if tick.venue_timestamped:
+            self.health.latency_ms = (tick.latency or 0.0) * 1000.0
+            self.health.clock_drift_ms = (tick.received_at - tick.timestamp) * 1000.0
 
         if self.on_tick is None:
             return
@@ -251,6 +250,18 @@ class ExchangeFeed(ABC):
             return False
         return True
 
+    def _go_offline(self, detail: str) -> None:
+        """Mark the feed dead and stop advertising the throughput it had.
+
+        Leaving `messages_per_sec` at its last value makes a dead feed read
+        as though data were still arriving, in the one panel whose job is to
+        say which feeds you can trust.
+        """
+        self.health.status = FeedStatus.OFFLINE
+        self.health.detail = detail[:200]
+        self.health.messages_per_sec = 0.0
+        self._msg_times.clear()
+
     def _note_message(self) -> None:
         now = self.clock.time()
         self.health.messages += 1
@@ -268,8 +279,7 @@ class ExchangeFeed(ABC):
 
         if self.health.status is not FeedStatus.OFFLINE:
             if age > self.stale_after * 4:
-                self.health.status = FeedStatus.OFFLINE
-                self.health.detail = f"stale {age:.1f}s"
+                self._go_offline(f"stale {age:.1f}s")
             elif age > self.stale_after:
                 self.health.status = FeedStatus.DEGRADED
                 self.health.detail = f"stale {age:.1f}s"
@@ -278,7 +288,9 @@ class ExchangeFeed(ABC):
 
         # Score in [0,1]: freshness dominates, latency and errors shave it down.
         freshness = max(0.0, 1.0 - age / max(self.stale_after * 4, 1e-9))
-        latency_pen = min(self.health.latency_ms / 2000.0, 1.0)
+        # Unknown latency is not penalised: we would be scoring our own
+        # ignorance, and the venues that omit timestamps are not slower.
+        latency_pen = min((self.health.latency_ms or 0.0) / 2000.0, 1.0)
         error_pen = min(self.health.errors / 20.0, 1.0)
         score = max(0.0, freshness * (1.0 - 0.3 * latency_pen) * (1.0 - 0.3 * error_pen))
         if self.health.status is FeedStatus.OFFLINE:
@@ -317,4 +329,5 @@ def make_tick(
         bid=bid,
         ask=ask,
         is_trade=is_trade,
+        venue_timestamped=bool(exchange_ts),
     )

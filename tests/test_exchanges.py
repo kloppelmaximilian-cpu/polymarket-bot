@@ -6,6 +6,7 @@ import time
 
 import pytest
 
+from pmbot.core.clock import SimulatedClock
 from pmbot.core.types import FeedStatus
 from pmbot.exchanges.base import make_tick
 from pmbot.exchanges.composite import CompositePriceEngine
@@ -408,3 +409,79 @@ class TestStrikeCaptureRegression:
         engine.seed_strike("BTC", boundary, 100_777.0, quality="external")
         record = engine.strike_for("BTC", boundary, now=boundary + 10.0)
         assert record.price == pytest.approx(100_777.0)
+
+
+class TestHealthDoesNotInventNumbers:
+    """The feed panel decides whether you trust the price.
+
+    Two ways it used to lie: a dead feed kept advertising the throughput it
+    had while alive, and venues that omit timestamps reported 0 ms latency,
+    which reads as a perfect link rather than as no measurement at all.
+    """
+
+    @staticmethod
+    def _feed():
+        from pmbot.exchanges.venues import BinanceFeed
+
+        return BinanceFeed(["BTC"], clock=SimulatedClock(1000.0))
+
+    def test_going_offline_zeroes_the_throughput(self):
+        feed = self._feed()
+        feed.health.status = FeedStatus.ONLINE
+        for offset in range(10):
+            feed.clock.advance(0.1)
+            feed._note_message()
+        assert feed.health.messages_per_sec > 0
+
+        feed.clock.advance(60.0)
+        health = feed.update_health()
+        assert health.status is FeedStatus.OFFLINE
+        assert health.messages_per_sec == 0.0
+        assert health.score == 0.0
+
+    def test_a_failed_connection_also_zeroes_it(self):
+        feed = self._feed()
+        feed.health.status = FeedStatus.ONLINE
+        feed._note_message()
+        feed.clock.advance(0.5)
+        feed._note_message()
+        assert feed.health.messages_per_sec > 0
+        feed._go_offline("ConnectionError: refused")
+        assert feed.health.messages_per_sec == 0.0
+        assert "refused" in feed.health.detail
+
+    def test_throughput_recovers_after_a_reconnect(self):
+        """Zeroing must not be sticky once messages flow again."""
+        feed = self._feed()
+        feed._go_offline("stale")
+        feed.health.status = FeedStatus.ONLINE
+        for _ in range(5):
+            feed.clock.advance(0.2)
+            feed._note_message()
+        assert feed.health.messages_per_sec > 0
+
+    def test_a_venue_without_timestamps_reports_unknown_latency(self):
+        """Binance bookTicker carries no event time; 0 ms would be a lie."""
+        tick = make_tick("binance", "BTC", "BTCUSDT", 100.0, exchange_ts=None)
+        assert tick.venue_timestamped is False
+        assert tick.latency is None
+
+    def test_a_timestamped_venue_reports_real_latency(self):
+        tick = make_tick(
+            "binance", "BTC", "BTCUSDT", 100.0, exchange_ts=time.time() - 0.25
+        )
+        assert tick.venue_timestamped is True
+        assert 0.2 < (tick.latency or 0.0) < 0.4
+
+    async def test_health_keeps_latency_unset_for_untimestamped_ticks(self):
+        feed = self._feed()
+        await feed._emit(make_tick("binance", "BTC", "BTCUSDT", 100.0))
+        assert feed.health.latency_ms is None
+        assert feed.health.clock_drift_ms is None
+
+    def test_unknown_latency_is_not_penalised_in_the_score(self):
+        feed = self._feed()
+        feed.health.status = FeedStatus.ONLINE
+        feed._note_message()
+        assert feed.health.latency_ms is None
+        assert feed.update_health().score > 0.9
