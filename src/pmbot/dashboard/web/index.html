@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pmbot</title>
+<style>
+:root {
+  --bg: #0d1117; --panel: #161b22; --panel-2: #1c232c; --line: #2a323d;
+  --text: #e6edf3; --dim: #8b949e; --faint: #6e7681;
+  --up: #3fb950; --down: #f85149; --warn: #d29922; --info: #58a6ff;
+  --accent: #a371f7; --live: #f85149;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+/* Dark by default, because that is what a terminal-adjacent tool looks like
+   -- but the operating system's preference wins unless the toggle overrode
+   it explicitly. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #ffffff; --panel: #f6f8fa; --panel-2: #eef1f4; --line: #d0d7de;
+    --text: #1f2328; --dim: #59636e; --faint: #818b98;
+    --up: #1a7f37; --down: #cf222e; --warn: #9a6700; --info: #0969da;
+    --accent: #8250df;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #ffffff; --panel: #f6f8fa; --panel-2: #eef1f4; --line: #d0d7de;
+  --text: #1f2328; --dim: #59636e; --faint: #818b98;
+  --up: #1a7f37; --down: #cf222e; --warn: #9a6700; --info: #0969da;
+  --accent: #8250df;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 13px/1.45 var(--mono); padding: 12px 16px 40px;
+}
+a { color: var(--info); }
+h1 { font-size: 15px; margin: 0; letter-spacing: .04em; }
+.row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; min-width: 0; }
+.row > * { min-width: 0; }
+/* `minmax(0, 1fr)` and not the implicit `auto`: an auto-sized column takes
+   the wide tables' max-content width and blows the whole page past the
+   viewport, so the panels get clipped instead of the tables scrolling. */
+.grid { display: grid; gap: 12px; margin-top: 12px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1000px) { .grid.two { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+/* Markets is the wide table; the two short panels stack beside it rather
+   than each claiming a full row. */
+@media (min-width: 1180px) { .grid.split { grid-template-columns: minmax(0, 5fr) minmax(0, 4fr); } }
+.stack { display: grid; gap: 12px; align-content: start; min-width: 0; }
+.panel {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  padding: 10px 12px; min-width: 0;
+}
+/* Tables scroll rather than clip. A silently truncated column on a dashboard
+   means reading the wrong number, which is worse than a scrollbar. */
+.panel > div { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.panel > h2 {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .09em;
+  color: var(--dim); margin: 0 0 8px; font-weight: 600;
+}
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th {
+  text-align: right; color: var(--faint); font-weight: 600; padding: 3px 6px;
+  border-bottom: 1px solid var(--line); white-space: nowrap;
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em;
+}
+th:first-child, td:first-child { text-align: left; }
+td { text-align: right; padding: 3px 6px; white-space: nowrap; }
+tbody tr:nth-child(even) { background: var(--panel-2); }
+.up { color: var(--up); } .down { color: var(--down); }
+.warn { color: var(--warn); } .dim { color: var(--dim); }
+.info { color: var(--info); } .accent { color: var(--accent); }
+.tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px;
+  background: var(--line); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+@media (min-width: 560px)  { .tiles { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 820px)  { .tiles { grid-template-columns: repeat(4, 1fr); } }
+@media (min-width: 1100px) { .tiles { grid-template-columns: repeat(6, 1fr); } }
+.tile { background: var(--panel); padding: 8px 10px; }
+.tile .k { font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: var(--faint); }
+.tile .v { font-size: 17px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.badge {
+  display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px;
+  border: 1px solid currentColor; letter-spacing: .05em;
+}
+.badge.paper { color: var(--info); }
+.badge.live { color: var(--live); font-weight: 700; }
+.banner {
+  margin-top: 10px; padding: 8px 12px; border-radius: 6px; font-size: 12px;
+  border: 1px solid var(--down); color: var(--down); background: color-mix(in srgb, var(--down) 12%, transparent);
+}
+.banner.ok { border-color: var(--line); color: var(--dim); background: var(--panel); }
+.banner ul { margin: 4px 0 0; padding-left: 18px; }
+.bar { height: 4px; border-radius: 2px; background: var(--panel-2); overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--info); }
+.pill { font-size: 10.5px; padding: 0 5px; border-radius: 3px; background: var(--panel-2); color: var(--dim); }
+.reasons { color: var(--faint); font-size: 11px; white-space: normal; text-align: left; }
+.empty { color: var(--faint); padding: 8px 2px; font-size: 12px; }
+button {
+  font: inherit; font-size: 11px; background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--line); border-radius: 5px; padding: 2px 9px; cursor: pointer;
+}
+.stale { animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .45; } }
+</style>
+</head>
+<body>
+
+<div class="row" style="justify-content: space-between">
+  <div class="row">
+    <h1>pmbot</h1>
+    <span id="mode" class="badge paper">—</span>
+    <span id="conn" class="dim">connecting…</span>
+  </div>
+  <div class="row">
+    <span id="clock" class="dim"></span>
+    <button id="theme">theme</button>
+  </div>
+</div>
+
+<div id="banner" class="banner ok">waiting for the first snapshot…</div>
+
+<div class="tiles" style="margin-top:12px" id="tiles"></div>
+
+<div class="grid split">
+  <div class="panel">
+    <h2>Markets <span id="mkt-count" class="pill"></span></h2>
+    <div id="markets"></div>
+  </div>
+  <div class="stack">
+    <div class="panel"><h2>Feeds</h2><div id="feeds"></div></div>
+    <div class="panel"><h2>Alerts</h2><div id="alerts"></div></div>
+  </div>
+</div>
+
+<div class="grid two">
+  <div class="panel"><h2>Signals — why</h2><div id="signals"></div></div>
+  <div class="panel"><h2>Open positions</h2><div id="positions"></div></div>
+</div>
+
+<div class="grid two">
+  <div class="panel"><h2>Recent trades</h2><div id="trades"></div></div>
+  <div class="panel"><h2>Strategies</h2><div id="strategies"></div></div>
+</div>
+
+<div class="grid two">
+  <div class="panel"><h2>Loop &amp; execution</h2><div id="loop"></div></div>
+  <div class="panel"><h2>Discovery</h2><div id="discovery"></div></div>
+</div>
+
+<script>
+"use strict";
+
+// ---------------------------------------------------------------- formatting
+const nf = (v, d = 2) => (v === null || v === undefined || Number.isNaN(v))
+  ? "—" : Number(v).toFixed(d);
+const money = (v, d = 2) => (v === null || v === undefined || Number.isNaN(v))
+  ? "—" : (v < 0 ? "-$" : "$") + Math.abs(Number(v)).toFixed(d);
+const pct = (v, d = 1) => (v === null || v === undefined || Number.isNaN(v))
+  ? "—" : (Number(v) * 100).toFixed(d) + "%";
+const bps = (v, d = 1) => (v === null || v === undefined || Number.isNaN(v))
+  ? "—" : (Number(v) >= 0 ? "+" : "") + Number(v).toFixed(d);
+const secs = (v) => {
+  if (v === null || v === undefined) return "—";
+  const s = Math.max(0, Math.round(v));
+  return (s >= 60 ? Math.floor(s / 60) + "m" : "") + (s % 60) + "s";
+};
+const sign = (v) => (v === null || v === undefined || Number.isNaN(v))
+  ? "" : (v > 0 ? "up" : v < 0 ? "down" : "");
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g,
+  (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const ago = (ts) => {
+  if (!ts) return "—";
+  const d = Date.now() / 1000 - ts;
+  return d < 90 ? Math.round(d) + "s ago" : Math.round(d / 60) + "m ago";
+};
+
+function table(head, rows, empty) {
+  if (!rows.length) return `<div class="empty">${esc(empty)}</div>`;
+  return `<table><thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead>`
+    + `<tbody>${rows.join("")}</tbody></table>`;
+}
+const td = (v, cls = "") => `<td${cls ? ` class="${cls}"` : ""}>${v}</td>`;
+const set = (id, html) => { document.getElementById(id).innerHTML = html; };
+
+// ---------------------------------------------------------------- panels
+function renderTiles(p) {
+  const risk = p.risk || {}, stats = p.stats || {}, health = p.health || {};
+  const tiles = [
+    ["equity", money(risk.equity), sign(risk.session_pnl)],
+    ["session P&L", money(risk.session_pnl), sign(risk.session_pnl)],
+    ["realized", money(risk.realized_pnl), sign(risk.realized_pnl)],
+    ["unrealized", money(risk.unrealized_pnl), sign(risk.unrealized_pnl)],
+    ["available", money(risk.available), ""],
+    ["exposure", money(risk.open_exposure), ""],
+    ["open", String(risk.open_positions ?? 0), ""],
+    ["trades", String(stats.trades ?? 0), ""],
+    ["win rate", pct(stats.win_rate), ""],
+    ["per hour", nf(stats.trades_per_hour, 1), ""],
+    ["max DD", pct(risk.drawdown), (risk.drawdown ?? 0) > 0.1 ? "down" : ""],
+    ["health", pct(health.score), health.level === "OK" ? "up" : "warn"],
+  ];
+  set("tiles", tiles.map(([k, v, cls]) =>
+    `<div class="tile"><div class="k">${esc(k)}</div>`
+    + `<div class="v ${cls}">${v}</div></div>`).join(""));
+}
+
+function renderMarkets(p) {
+  const rows = (p.markets || []).map((m) => {
+    const edge = m.edge, req = m.required_edge;
+    const hot = edge !== null && req !== null && edge >= req;
+    return "<tr>"
+      + td(`<b>${esc(m.asset)}</b>`)
+      + td(secs(m.seconds_remaining), m.in_window ? "" : "dim")
+      + td(nf(m.up_bid) + "/" + nf(m.up_ask))
+      + td(nf(m.spread, 3), (m.spread ?? 0) > 0.05 ? "warn" : "dim")
+      + td(money(m.liquidity, 0), (m.liquidity ?? 0) < 100 ? "warn" : "")
+      + td(bps(m.distance_bps), sign(m.distance_bps))
+      + td(pct(m.model_up, 1))
+      + td(pct(m.market_up, 1), "dim")
+      + td(edge === null ? "—" : bps(edge * 100, 1), hot ? "up" : sign(edge))
+      + td(m.decision ? `<span class="pill">${esc(m.decision)}</span>` : "—")
+      + "</tr>";
+  });
+  document.getElementById("mkt-count").textContent = (p.markets || []).length + " tracked";
+  set("markets", table(
+    ["asset", "left", "up bid/ask", "spr", "liq", "dist", "model", "mkt", "edge pp", "state"],
+    rows, "no markets tracked yet"));
+}
+
+function renderSignals(p) {
+  const rows = (p.signals || []).flatMap((s) => {
+    const why = (s.reasons || []).join(" · ") || (s.blockers || []).join(" · ");
+    const drivers = (s.drivers || [])
+      .map((d) => `${esc(d.strategy)} ${pct(d.probability, 0)}`).join(", ");
+    return [
+      "<tr>"
+      + td(`<b>${esc(s.asset)}</b> ${esc(s.outcome)}`)
+      + td(secs(s.seconds_remaining), "dim")
+      + td(pct(s.model_probability, 1))
+      + td(pct(s.market_probability, 1), "dim")
+      + td(bps(s.net_edge * 100, 1), sign(s.net_edge))
+      + td(pct(s.confidence, 0))
+      + td(money(s.notional, 0))
+      + td(`<span class="pill">${esc(s.decision)}</span>`)
+      + "</tr>",
+      `<tr><td colspan="8" class="reasons">${esc(why)}`
+      + (drivers ? ` <span class="dim">— ${esc(drivers)}</span>` : "") + "</td></tr>",
+    ];
+  });
+  set("signals", table(
+    ["market", "left", "model", "mkt", "edge pp", "conf", "size", "decision"],
+    rows, "no ranked opportunities right now"));
+}
+
+function renderPositions(p) {
+  const rows = (p.positions || []).map((x) => "<tr>"
+    + td(`<b>${esc(x.asset)}</b> ${esc(x.outcome)}`)
+    + td(nf(x.size, 1)) + td(nf(x.avg_price)) + td(nf(x.current))
+    + td(money(x.exposure)) + td(money(x.unrealized), sign(x.unrealized))
+    + td(secs(x.seconds_remaining), "dim") + td(esc(x.strategy || "—"), "dim")
+    + "</tr>");
+  set("positions", table(
+    ["market", "size", "entry", "mark", "exposure", "unreal", "left", "strategy"],
+    rows, "no open positions"));
+}
+
+function renderTrades(p) {
+  const rows = (p.trades || []).map((t) => "<tr>"
+    + td(`<b>${esc(t.asset)}</b> ${esc(t.outcome)}`)
+    + td(nf(t.entry)) + td(t.exit === null ? "—" : nf(t.exit))
+    + td(nf(t.size, 1)) + td(money(t.pnl), sign(t.pnl))
+    + td(bps((t.edge ?? 0) * 100, 1), "dim")
+    + td(esc(t.strategy || "—"), "dim") + td(ago(t.closed_at), "dim")
+    + "</tr>");
+  set("trades", table(
+    ["market", "entry", "exit", "size", "P&L", "edge pp", "strategy", "closed"],
+    rows, "no closed trades yet"));
+}
+
+function renderStrategies(p) {
+  const perf = p.strategy_performance || {}, pnl = p.strategy_pnl || {};
+  const names = [...new Set([...Object.keys(perf), ...Object.keys(pnl)])].sort();
+  const rows = names.map((name) => {
+    const a = perf[name] || {}, b = pnl[name] || {};
+    return "<tr>" + td(esc(name)) + td(String(a.n ?? 0))
+      + td(nf(a.skill, 3), sign(a.skill)) + td(nf(a.ewma_brier, 3), "dim")
+      + td(String(b.trades ?? 0)) + td(pct(b.win_rate, 0))
+      + td(money(b.pnl), sign(b.pnl)) + "</tr>";
+  });
+  set("strategies", table(
+    ["strategy", "signals", "skill", "brier", "trades", "win", "P&L"],
+    rows, "no strategy statistics yet"));
+}
+
+function renderFeeds(p) {
+  const rows = (p.feeds || []).map((f) => {
+    const cls = f.status === "ONLINE" ? "up" : f.status === "DEGRADED" ? "warn" : "down";
+    return "<tr>" + td(esc(f.name)) + td(`<span class="${cls}">${esc(f.status)}</span>`)
+      + td(nf(f.latency_ms, 0)) + td(nf(f.messages_per_sec, 1))
+      + td(String(f.reconnects ?? 0), (f.reconnects ?? 0) > 3 ? "warn" : "dim")
+      + td(`<div class="bar"><i style="width:${Math.round((f.score ?? 0) * 100)}%"></i></div>`)
+      + "</tr>";
+  });
+  set("feeds", table(["feed", "status", "ms", "msg/s", "rc", "score"],
+    rows, "no feeds configured"));
+}
+
+function renderAlerts(p) {
+  const rows = (p.alerts || []).map((a) => {
+    const cls = a.level === "critical" ? "down" : a.level === "warning" ? "warn" : "dim";
+    return `<tr><td class="${cls}">${esc(a.level)}</td>`
+      + `<td class="reasons">${esc(a.message)}</td>`
+      + `<td class="dim">${ago(a.ts)}</td></tr>`;
+  });
+  set("alerts", table(["level", "message", "when"], rows, "no alerts"));
+}
+
+function renderLoop(p) {
+  const l = p.loop || {}, x = p.execution || {}, db = p.database || {};
+  const rows = [
+    ["cycles", String(l.cycles ?? 0)], ["errors", String(l.errors ?? 0)],
+    ["last cycle", nf(l.last_cycle_ms, 1) + " ms"],
+    ["avg cycle", nf(l.avg_cycle_ms, 1) + " ms"],
+    ["evaluations", String(l.evaluations ?? 0)],
+    ["attempted", String(l.trades_attempted ?? 0)],
+    ["filled", String(l.trades_filled ?? 0)],
+    ["working orders", String(p.working_orders ?? 0)],
+    ["orders sent", String(x.submitted ?? 0)],
+    ["db queued", String(db.queued ?? 0)],
+    ["db written", String(db.written ?? 0)],
+  ].map(([k, v]) => `<tr><td>${esc(k)}</td>${td(v)}</tr>`);
+  set("loop", table(["metric", "value"], rows, "—"));
+}
+
+function renderDiscovery(p) {
+  const d = p.discovery || {}, c = p.composites || {};
+  const rows = [
+    `<tr><td>cycles</td>${td(String(d.cycles ?? 0))}</tr>`,
+    `<tr><td>tracked</td>${td(String(d.tracked ?? 0))}</tr>`,
+  ];
+  for (const [asset, v] of Object.entries(c)) {
+    rows.push("<tr>" + td(`<b>${esc(asset)}</b>`)
+      + td(`${nf(v.price)} <span class="dim">${v.sources ?? 0} src, `
+        + `${nf(v.dispersion_bps, 1)}bps, σ ${nf(v.sigma_window_bps, 1)}bps</span>`,
+        v.healthy ? "" : "warn") + "</tr>");
+  }
+  for (const [reason, n] of Object.entries(d.rejects || {})) {
+    rows.push(`<tr><td class="dim">reject: ${esc(reason)}</td>${td(String(n), "dim")}</tr>`);
+  }
+  set("discovery", table(["source", "value"], rows, "—"));
+}
+
+// ---------------------------------------------------------------- polling
+let failures = 0;
+
+function renderDisconnected(message) {
+  const conn = document.getElementById("conn");
+  conn.textContent = message;
+  conn.className = "down stale";
+  const banner = document.getElementById("banner");
+  banner.className = "banner";
+  banner.textContent = message;
+}
+
+async function tick() {
+  let data;
+  try {
+    const response = await fetch("api/state", { cache: "no-store" });
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    data = await response.json();
+    failures = 0;
+  } catch (exc) {
+    failures += 1;
+    renderDisconnected(`dashboard server unreachable (${exc.message}) — `
+      + `${failures} failed poll${failures === 1 ? "" : "s"}`);
+    return;
+  }
+
+  document.getElementById("clock").textContent = new Date().toLocaleTimeString();
+
+  if (!data.connected) {
+    renderDisconnected(data.error || "no snapshot published yet — is the bot running?");
+    return;
+  }
+
+  const p = data.payload || {};
+  const mode = document.getElementById("mode");
+  mode.textContent = (p.mode || "?").toUpperCase() + (p.dry_run ? " (dry run)" : "");
+  mode.className = "badge " + (p.live_armed ? "live" : "paper");
+
+  const conn = document.getElementById("conn");
+  // Staleness is the one thing a trading dashboard must never hide: a frozen
+  // page that looks live is worse than no page.
+  if (data.stale) {
+    conn.textContent = `STALE — snapshot ${Math.round(data.age)}s old`;
+    conn.className = "down stale";
+  } else {
+    conn.textContent = `live · ${data.age.toFixed(1)}s · up ${secs(p.uptime)}`;
+    conn.className = "dim";
+  }
+
+  const banner = document.getElementById("banner");
+  const warnings = data.warnings || [];
+  if (warnings.length) {
+    banner.className = "banner";
+    banner.innerHTML = `<b>${warnings.length} issue${warnings.length === 1 ? "" : "s"}</b>`
+      + `<ul>${warnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul>`;
+  } else {
+    banner.className = "banner ok";
+    banner.textContent = "no warnings — feeds healthy, trading enabled";
+  }
+
+  renderTiles(p); renderMarkets(p); renderSignals(p); renderPositions(p);
+  renderTrades(p); renderStrategies(p); renderFeeds(p); renderAlerts(p);
+  renderLoop(p); renderDiscovery(p);
+}
+
+const themeButton = document.getElementById("theme");
+const prefersLight = () => window.matchMedia("(prefers-color-scheme: light)").matches;
+try {
+  const saved = localStorage.getItem("pmbot-theme");
+  if (saved) document.documentElement.dataset.theme = saved;
+} catch (exc) { /* private window: the OS preference is fine */ }
+themeButton.addEventListener("click", () => {
+  const current = document.documentElement.dataset.theme
+    || (prefersLight() ? "light" : "dark");
+  const next = current === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem("pmbot-theme", next); } catch (exc) { /* ignore */ }
+});
+
+tick();
+setInterval(tick, Number(document.body.dataset.interval || 1000));
+</script>
+</body>
+</html>

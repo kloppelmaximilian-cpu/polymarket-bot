@@ -32,6 +32,7 @@ In a second terminal, from the same directory:
 
 ```bash
 ./dashboard.sh            # live terminal dashboard
+./web.sh                  # or the same thing as a local web page
 ```
 
 That is the whole happy path. Everything below is detail.
@@ -62,6 +63,7 @@ bot doctor                       # check deps and API reachability
 bot discover                     # list the 5-minute markets it can see
 bot start                        # paper trading
 bot dashboard                    # in another terminal
+bot web                          # ... or in a browser
 ```
 
 `make help` lists every shortcut.
@@ -311,7 +313,7 @@ two points overconfident turns a winning strategy into a losing one.
 
 ### Tests
 
-803 tests, all passing in about 50 seconds:
+827 tests, all passing in about a minute:
 
 ```bash
 make test          # full suite

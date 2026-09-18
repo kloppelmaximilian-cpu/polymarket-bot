@@ -43,6 +43,10 @@ bot = "pmbot.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+# The web dashboard's page, served by `bot web`.
+"pmbot.dashboard" = ["web/*.html"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]

@@ -109,6 +109,26 @@ def stop() -> None:
 
 
 @app.command()
+def web(
+    port: int = typer.Option(8787, help="port to listen on"),
+    host: str = typer.Option(
+        "127.0.0.1", help="bind address; anything but loopback exposes your positions"
+    ),
+    interval: float = typer.Option(1.0, help="browser poll interval in seconds"),
+    open_browser: bool = typer.Option(
+        True, "--open/--no-open", help="open the page in your browser"
+    ),
+) -> None:
+    """Serve the dashboard as a local web page.  Safe to run while trading."""
+    from .dashboard.web import serve
+
+    serve(
+        _state_path(), host=host, port=port,
+        poll_interval_ms=int(interval * 1000), open_browser=open_browser,
+    )
+
+
+@app.command()
 def dashboard(
     simple: bool = typer.Option(False, help="use the Rich fallback instead of Textual"),
     once: bool = typer.Option(False, help="render one frame and exit"),

@@ -1,9 +1,16 @@
 # Dashboard
 
+Two front-ends over the same data: a terminal UI and a local web page.
+
 ```bash
-./dashboard.sh          # or: bot dashboard
+./dashboard.sh          # terminal, or: bot dashboard
+./web.sh                # browser at http://127.0.0.1:8787
+```
+
+```bash
 bot dashboard --simple  # Rich fallback, works over a pipe or a dumb terminal
 bot dashboard --once    # one frame and exit (CI, logs, screenshots)
+bot web --port 9000 --no-open --interval 2
 ```
 
 The dashboard is a **separate process**. It reads the atomically-published
@@ -15,6 +22,51 @@ Two front-ends over identical renderers: a Textual TUI by default, and a
 single-screen Rich version with `--simple`. The fallback is not an afterthought
 — a dashboard that only works in a modern terminal is unavailable exactly when
 something has gone wrong on a remote box.
+
+## The web page
+
+`bot web` (or `./web.sh`) serves the same panels as a page in your browser and
+opens it for you. Like the TUI it is a **separate process** reading the same
+published snapshot, so a browser tab left open overnight cannot slow the
+trading loop.
+
+| | |
+|---|---|
+| default address | `http://127.0.0.1:8787` |
+| refresh | polls `/api/state` once a second (`--interval`) |
+| endpoints | `/` the page, `/api/state` the snapshot plus warnings, `/healthz` |
+| dependencies | none — the standard library's HTTP server and one HTML file |
+
+It fetches **nothing from the internet**: no CDN, no web fonts, no analytics.
+A trading tool should not load code at runtime from anywhere but itself, and
+the page works with the machine offline.
+
+### It is not an open endpoint
+
+The payload is a live account statement — positions, balances, P&L — so:
+
+- It binds to **loopback only**. `--host` accepts something else and logs a
+  warning saying what you just exposed.
+- Requests carrying a foreign `Host` header are refused with 403. A page on
+  the public internet can otherwise point a hostname it controls at
+  `127.0.0.1` and read this dashboard through your own browser (DNS
+  rebinding).
+- No `Access-Control-Allow-Origin`, so another site's JavaScript cannot read
+  the response either.
+
+It is read-only: there is no route that places, cancels or configures
+anything. To act on what you see, use the CLI.
+
+### Staleness
+
+The header shows the snapshot age, and turns red and pulses once it passes
+eight seconds. This is the one thing the page will never hide: a frozen
+dashboard that looks live is worse than no dashboard. If the bot is not
+running you get *"no snapshot published yet"*, not an empty page that reads
+like a flat day.
+
+Dark by default, light if your system asks for it, and the `theme` button
+overrides both (remembered per browser).
 
 ## Keys
 

@@ -9,7 +9,7 @@ BOT := $(VENV)/bin/bot
 PYTHON ?= python3
 
 .PHONY: help install run dashboard status doctor discover test test-fast \
-        lint validate accept backtest walkforward seeds robustness train \
+        web lint validate accept backtest walkforward seeds robustness train \
         session clean db-size
 
 help:  ## Show this help
@@ -38,6 +38,9 @@ run:  ## Start the bot in paper mode
 
 dashboard:  ## Live terminal dashboard
 	./dashboard.sh
+
+web:  ## Live dashboard as a local web page (http://127.0.0.1:8787)
+	./web.sh
 
 status:  ## One-screen summary of the running bot
 	$(BOT) status

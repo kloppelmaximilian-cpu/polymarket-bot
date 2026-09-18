@@ -38,14 +38,16 @@ class TestHelp:
         result = runner.invoke(app, ["--help"])
         assert result.exit_code == 0
         for command in ("start", "status", "markets", "signals", "backtest",
-                        "walkforward", "train", "dashboard", "doctor", "risk"):
+                        "walkforward", "train", "dashboard", "web", "doctor",
+                        "risk"):
             assert command in result.output
 
     @pytest.mark.parametrize(
         "command",
         ["start", "stop", "dashboard", "status", "markets", "signals", "positions",
          "trades", "pnl", "risk", "strategies", "feeds", "config", "audit",
-         "discover", "doctor", "backtest", "walkforward", "train", "session"],
+         "discover", "doctor", "backtest", "walkforward", "train", "session",
+         "web"],
     )
     def test_each_command_has_help(self, command):
         result = runner.invoke(app, [command, "--help"])
