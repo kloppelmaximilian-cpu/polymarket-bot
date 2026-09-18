@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import time
 
 import pytest
@@ -485,3 +486,87 @@ class TestHealthDoesNotInventNumbers:
         feed._note_message()
         assert feed.health.latency_ms is None
         assert feed.update_health().score > 0.9
+
+
+class TestSilenceWatchdog:
+    """A socket that is open, answers pings and sends nothing.
+
+    The reconnect loop only runs when the read loop raises, so a lost
+    subscription or a venue that quietly stops streaming leaves the feed
+    marked OFFLINE by staleness while the read loop waits forever. Nothing
+    recovers it short of restarting the process -- which is what three feeds
+    did for two hours on the first overnight run.
+    """
+
+    @staticmethod
+    def _feed(**kwargs):
+        from pmbot.exchanges.venues import BinanceFeed
+
+        return BinanceFeed(["BTC"], clock=SimulatedClock(1000.0), **kwargs)
+
+    def test_the_default_threshold_sits_well_beyond_staleness(self):
+        """A quiet spell should cost health, not a reconnect."""
+        feed = self._feed(stale_after=3.0)
+        assert feed.silence_timeout >= feed.stale_after * 4
+        assert feed.silence_timeout >= 30.0
+
+    def test_a_flowing_feed_is_never_silent(self):
+        feed = self._feed(silence_timeout=30.0)
+        feed.health.last_message_at = 1000.0
+        assert feed.is_silent(1020.0, connected_at=900.0) is False
+
+    def test_sustained_silence_is_detected(self):
+        feed = self._feed(silence_timeout=30.0)
+        feed.health.last_message_at = 1000.0
+        assert feed.is_silent(1031.0, connected_at=900.0) is True
+
+    def test_a_subscription_that_never_delivered_is_measured_from_connect(self):
+        """The case that never recovers: rejected outright, no message ever."""
+        feed = self._feed(silence_timeout=30.0)
+        assert feed.health.last_message_at == 0.0
+        assert feed.is_silent(1020.0, connected_at=1000.0) is False
+        assert feed.is_silent(1031.0, connected_at=1000.0) is True
+
+    async def test_the_watchdog_closes_a_silent_socket(self):
+        feed = self._feed(silence_timeout=0.05)
+        closed: dict = {}
+
+        class FakeWs:
+            async def close(self, code=1000, reason=""):
+                closed["code"] = code
+                closed["reason"] = reason
+
+        connected_at = feed.clock.time()
+        feed.clock.advance(60.0)          # silent well past the threshold
+        await feed._watchdog(FakeWs(), connected_at=connected_at)
+        assert closed == {"code": 1011, "reason": "no data"}
+
+    async def test_the_watchdog_leaves_a_live_socket_alone(self):
+        import asyncio
+
+        feed = self._feed(silence_timeout=4.0)
+        feed.health.last_message_at = feed.clock.time()
+        closed: dict = {}
+
+        class FakeWs:
+            async def close(self, code=1000, reason=""):
+                closed["code"] = code
+
+        task = asyncio.create_task(
+            feed._watchdog(FakeWs(), connected_at=feed.clock.time())
+        )
+        await asyncio.sleep(0.05)
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+        assert closed == {}
+
+    async def test_stopping_the_feed_ends_the_watchdog(self):
+        feed = self._feed(silence_timeout=0.05)
+        feed._stop.set()
+
+        class FakeWs:
+            async def close(self, code=1000, reason=""):
+                raise AssertionError("must not close after stop")
+
+        await feed._watchdog(FakeWs(), connected_at=feed.clock.time())

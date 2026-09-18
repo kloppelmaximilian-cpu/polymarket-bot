@@ -46,6 +46,7 @@ class PolymarketMarketFeed:
         stale_after: float = 5.0,
         reconnect_base: float = 1.0,
         reconnect_max: float = 30.0,
+        silence_timeout: float | None = None,
         on_event: EventHandler | None = None,
     ):
         self.books = book_manager
@@ -54,6 +55,10 @@ class PolymarketMarketFeed:
         self.stale_after = stale_after
         self.reconnect_base = reconnect_base
         self.reconnect_max = reconnect_max
+        self.silence_timeout = (
+            max(stale_after * 10.0, 30.0) if silence_timeout is None
+            else silence_timeout
+        )
         self.on_event = on_event
         self.log = get_logger("pmbot.polymarket.ws")
 
@@ -122,10 +127,11 @@ class PolymarketMarketFeed:
 
                     pinger = asyncio.create_task(self._ping_loop(ws))
                     ops = asyncio.create_task(self._ops_loop(ws))
+                    dog = asyncio.create_task(self._watchdog(ws, time.time()))
                     try:
                         await self._read_loop(ws)
                     finally:
-                        for task in (pinger, ops):
+                        for task in (pinger, ops, dog):
                             task.cancel()
                             with contextlib.suppress(asyncio.CancelledError):
                                 await task
@@ -149,6 +155,32 @@ class PolymarketMarketFeed:
                 await asyncio.wait_for(self._stop.wait(), timeout=delay)
 
         self.health.status = FeedStatus.OFFLINE
+
+    def is_silent(self, now: float, connected_at: float) -> bool:
+        """Has this open socket stopped delivering data for too long?"""
+        since = self.health.last_message_at or connected_at
+        return (now - since) > self.silence_timeout
+
+    async def _watchdog(self, ws: Any, connected_at: float) -> None:
+        """Force a reconnect when the socket is open but silent.
+
+        The market feed answers our pings whether or not the subscription
+        survived, so without this a lost subscription looks exactly like a
+        quiet market and never recovers.
+        """
+        interval = max(self.silence_timeout / 4.0, 0.25)
+        while not self._stop.is_set():
+            await asyncio.sleep(interval)
+            if not self.is_silent(time.time(), connected_at):
+                continue
+            since = self.health.last_message_at or connected_at
+            self.log.warning(
+                "socket open but silent, forcing reconnect",
+                extra={"silent_seconds": round(time.time() - since, 1)},
+            )
+            with contextlib.suppress(Exception):
+                await ws.close(code=1011, reason="no data")
+            return
 
     async def _ping_loop(self, ws: Any) -> None:
         while not self._stop.is_set():

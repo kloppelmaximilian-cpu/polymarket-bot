@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 import pytest
 
 from pmbot.core.types import FeedStatus, Side
@@ -189,3 +191,40 @@ class TestHealth:
             feed._note_message()
         assert feed.health.messages == 10
         assert feed.health.messages_per_sec >= 0
+
+
+class TestPolymarketSilenceWatchdog:
+    """The market feed answers our pings whether or not the subscription
+    survived, so a lost subscription looks exactly like a quiet market."""
+
+    @staticmethod
+    def _feed(**kwargs):
+        from pmbot.orderbook.book import OrderBookManager
+        from pmbot.polymarket.clob_ws import PolymarketMarketFeed
+
+        return PolymarketMarketFeed(OrderBookManager(), **kwargs)
+
+    def test_threshold_defaults_beyond_staleness(self):
+        feed = self._feed(stale_after=5.0)
+        assert feed.silence_timeout >= feed.stale_after * 4
+
+    def test_a_busy_book_feed_is_not_silent(self):
+        feed = self._feed(silence_timeout=30.0)
+        feed.health.last_message_at = 1000.0
+        assert feed.is_silent(1010.0, connected_at=900.0) is False
+
+    def test_silence_is_measured_from_connect_before_any_message(self):
+        feed = self._feed(silence_timeout=30.0)
+        assert feed.is_silent(1031.0, connected_at=1000.0) is True
+
+    async def test_a_silent_socket_is_closed(self):
+        feed = self._feed(silence_timeout=0.2)
+        closed: dict = {}
+
+        class FakeWs:
+            async def close(self, code=1000, reason=""):
+                closed["code"] = code
+
+        feed.health.last_message_at = time.time() - 600
+        await feed._watchdog(FakeWs(), connected_at=time.time() - 600)
+        assert closed == {"code": 1011}

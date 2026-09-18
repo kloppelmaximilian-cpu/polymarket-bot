@@ -56,6 +56,7 @@ class ExchangeFeed(ABC):
         stale_after: float = 3.0,
         reconnect_base: float = 1.0,
         reconnect_max: float = 30.0,
+        silence_timeout: float | None = None,
     ):
         self.assets = [a.upper() for a in assets if a.upper() in self.symbol_map]
         self.on_tick = on_tick
@@ -63,6 +64,13 @@ class ExchangeFeed(ABC):
         self.stale_after = stale_after
         self.reconnect_base = reconnect_base
         self.reconnect_max = reconnect_max
+        # Deliberately far beyond the staleness threshold: a brief quiet spell
+        # should degrade the feed's health, only a sustained silence should
+        # cost a reconnect.
+        self.silence_timeout = (
+            max(stale_after * 10.0, 30.0) if silence_timeout is None
+            else silence_timeout
+        )
 
         self.health = FeedHealth(name=self.name)
         self.log = get_logger(f"pmbot.exchange.{self.name}")
@@ -138,12 +146,14 @@ class ExchangeFeed(ABC):
                             payload if isinstance(payload, str) else json.dumps(payload)
                         )
                     hb = asyncio.create_task(self._heartbeat(ws))
+                    dog = asyncio.create_task(self._watchdog(ws, self.clock.time()))
                     try:
                         await self._read_loop(ws)
                     finally:
-                        hb.cancel()
-                        with contextlib.suppress(asyncio.CancelledError):
-                            await hb
+                        for task in (hb, dog):
+                            task.cancel()
+                            with contextlib.suppress(asyncio.CancelledError):
+                                await task
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # noqa: BLE001 - never kill the loop
@@ -206,6 +216,40 @@ class ExchangeFeed(ABC):
                 await ws.send(payload)
             except Exception:  # noqa: BLE001 - read loop will notice the drop
                 return
+
+    def is_silent(self, now: float, connected_at: float) -> bool:
+        """Has this open socket stopped delivering data for too long?
+
+        Measured from the last message, or from the moment we connected when
+        none has ever arrived -- a subscription that was rejected outright is
+        the case that never recovers on its own.
+        """
+        since = self.health.last_message_at or connected_at
+        return (now - since) > self.silence_timeout
+
+    async def _watchdog(self, ws: Any, connected_at: float) -> None:
+        """Force a reconnect when an open socket goes quiet.
+
+        A socket can stay open, answer pings and deliver nothing: a dropped
+        subscription, or a venue that stopped streaming after a network
+        hiccup. Staleness then marks the feed offline while the read loop
+        waits forever for bytes that never come, so the feed stays dead until
+        the process is restarted. Closing the socket puts it back through the
+        reconnect path, which is the only thing that actually fixes it.
+        """
+        interval = max(self.silence_timeout / 4.0, 0.25)
+        while not self._stop.is_set():
+            await asyncio.sleep(interval)
+            if not self.is_silent(self.clock.time(), connected_at):
+                continue
+            since = self.health.last_message_at or connected_at
+            self.log.warning(
+                "socket open but silent, forcing reconnect",
+                extra={"silent_seconds": round(self.clock.time() - since, 1)},
+            )
+            with contextlib.suppress(Exception):
+                await ws.close(code=1011, reason="no data")
+            return
 
     # ---------------------------------------------------------- tick intake
     async def _emit(self, tick: Tick) -> None:

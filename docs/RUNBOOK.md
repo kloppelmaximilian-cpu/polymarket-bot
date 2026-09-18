@@ -133,6 +133,38 @@ your own data and show out-of-sample evidence, not to lower `MIN_EDGE`.
 The bot started mid-window. It needs to be running when a window opens. Wait
 five minutes.
 
+**If it persists for hours, it is not that.** The strike is the composite
+price at the moment a window opens, and it is only recorded when the composite
+is healthy at that instant. Feeds that keep dropping mean no window ever opens
+under a healthy composite, so `DIST` stays `—` for ever, `fair_value` abstains
+permanently and every model probability collapses towards the market's. Fix
+the feeds first — `bot feeds`, then the log:
+
+```bash
+grep '"event": "connection failed"' logs/pmbot.log | tail -20
+grep 'socket open but silent' logs/pmbot.log | tail
+```
+
+### Feeds go offline and never come back
+
+Look at what the log says, because two very different faults look identical on
+the dashboard.
+
+`keepalive ping timeout` or `no close frame received` on **several venues
+within seconds of each other** is your machine, not the venues. A laptop that
+sleeps, or Wi-Fi reconnecting, drops every socket at once. The bot reconnects
+on its own; if it happens nightly, stop the laptop sleeping:
+
+```bash
+caffeinate -i ./start_bot.sh
+```
+
+`socket open but silent, forcing reconnect` means the socket stayed open and
+stopped delivering — a dropped subscription, or a venue that went quiet after
+a network hiccup. The watchdog closes it so the reconnect path can run. Seeing
+it occasionally is the system working; seeing it constantly on one venue means
+that venue's subscription payload needs looking at.
+
 ### Database growing quickly
 
 Roughly 1 row per market per second across several tables. Prune old rows:
