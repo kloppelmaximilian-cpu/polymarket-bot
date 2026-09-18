@@ -93,7 +93,21 @@ on the dashboard the moment it happens.
 
 ## System-health stops
 
-Separately from P&L, the health monitor pauses trading or halves size on:
+Separately from P&L, the health monitor pauses trading or halves size on the
+conditions below. Unlike the kill switches these **do not latch**: the pause
+lifts as soon as health recovers, and `trading resumed: health recovered`
+appears in the log and the alerts panel.
+
+The distinction matters more than it looks. A losing streak is evidence about
+the model, and the model does not improve because the next tick looked
+friendlier — so it rides out the cooldown. A reconnecting feed is
+infrastructure we are already watching, and it clears itself. Latching both
+alike means that feeds flapping every few minutes keep the bot switched off
+almost permanently while every panel reads healthy, which is exactly what the
+first overnight run did: eight hours up, zero trades, health 100%.
+
+A latched pause always outranks an unlatched one, so a loss stop that fires
+during an outage is *not* cancelled when the feed returns.
 
 | Condition | Action |
 |---|---|

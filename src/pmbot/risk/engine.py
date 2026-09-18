@@ -9,9 +9,15 @@ Two jobs, kept separate on purpose:
   independently and the *first* breach blocks the trade, with a named reason
   that is logged and shown on the dashboard.
 
-Kill switches latch: once a loss limit or a system-health stop fires, trading
-pauses for a configured cooldown rather than resuming on the next tick that
-happens to look better.
+Kill switches latch: once a loss limit fires, trading pauses for a configured
+cooldown rather than resuming on the next tick that happens to look better.
+A losing streak is evidence about the model, and the model does not improve
+because the next tick looked friendlier.
+
+Infrastructure pauses do not latch. A reconnecting feed is directly
+observable and self-clearing, so riding out a five-minute cooldown after it
+recovers buys nothing -- and when feeds flap, a latching health pause keeps
+the bot switched off almost permanently while every panel reads healthy.
 """
 
 from __future__ import annotations
@@ -111,6 +117,9 @@ class RiskEngine:
         self._daily_start_pnl = 0.0
         self._paused_until = 0.0
         self._pause_reason = ""
+        #: A latched pause must run its full cooldown. An unlatched one is
+        #: cleared the moment the condition that caused it goes away.
+        self._pause_latched = True
         # All crypto is one correlation bucket unless told otherwise.
         self._buckets = correlation_buckets or {}
         self._last_marks: dict[str, float] = {}
@@ -254,23 +263,55 @@ class RiskEngine:
         if now >= self._paused_until:
             self._paused_until = 0.0
             self._pause_reason = ""
+            self._pause_latched = True
             self.log.info("risk pause expired")
             return False
         return True
 
-    def pause(self, reason: str, seconds: float | None = None, severity: str = "warning") -> None:
+    def pause(
+        self,
+        reason: str,
+        seconds: float | None = None,
+        severity: str = "warning",
+        latch: bool = True,
+    ) -> None:
+        """Stop trading.
+
+        ``latch=False`` marks the pause as caused by a transient condition the
+        caller is watching, so :meth:`clear_transient_pause` may lift it early.
+        A latched pause always outranks an unlatched one: a loss stop that
+        fires during a feed outage is not cancelled when the feed returns.
+        """
         duration = self.limits.pause_seconds if seconds is None else seconds
         now = self.clock.time()
+        # Read the existing pause before extending it, or every pause looks
+        # like it arrived on top of an active one.
+        was_latched = self.is_paused(now) and self._pause_latched
         self._paused_until = max(self._paused_until, now + duration)
         self._pause_reason = reason
-        self.record_event("trading_pause", severity, reason, {"seconds": duration})
-        self.log.warning(
-            "trading paused", extra={"reason": reason, "seconds": duration}
+        self._pause_latched = latch or was_latched
+        self.record_event(
+            "trading_pause", severity, reason,
+            {"seconds": duration, "latched": self._pause_latched},
         )
+        self.log.warning(
+            "trading paused",
+            extra={"reason": reason, "seconds": duration,
+                   "latched": self._pause_latched},
+        )
+
+    def clear_transient_pause(self, reason: str = "condition cleared") -> bool:
+        """Lift an unlatched pause once its cause is gone. True if lifted."""
+        if self._pause_latched or not self.is_paused():
+            return False
+        self.log.info("trading resumed", extra={"reason": reason})
+        self.resume(reason)
+        return True
 
     def resume(self, reason: str = "manual") -> None:
         self._paused_until = 0.0
         self._pause_reason = ""
+        self._pause_latched = True
         self.record_event("trading_resume", "info", reason)
 
     def record_event(

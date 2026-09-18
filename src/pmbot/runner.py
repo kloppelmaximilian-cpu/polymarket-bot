@@ -485,8 +485,18 @@ class BotRunner:
         )
         self.system_health = system
         if system.should_pause and not self.risk.is_paused(now):
-            self.risk.pause(f"system health: {'; '.join(system.issues[:2])}")
+            # Unlatched: the cause is a feed we are watching, so it is lifted
+            # the moment the feeds come back rather than after a fixed
+            # cooldown. Flapping feeds would otherwise keep the bot off
+            # almost permanently while every panel reads healthy.
+            self.risk.pause(
+                f"system health: {'; '.join(system.issues[:2])}", latch=False
+            )
             await self.alerts.send("critical", "health", "; ".join(system.issues[:3]))
+        elif not system.should_pause and self.risk.clear_transient_pause(
+            "system health recovered"
+        ):
+            await self.alerts.send("info", "health", "trading resumed: health recovered")
 
         # 3. mark open positions
         marks: dict[str, float] = {}

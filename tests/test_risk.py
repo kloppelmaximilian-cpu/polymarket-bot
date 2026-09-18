@@ -399,3 +399,79 @@ class TestSlippageBoundedSizing:
             upper_bound=500.0,
         )
         assert result == pytest.approx(500.0, rel=0.01)
+
+
+class TestPauseLatching:
+    """A losing streak and a reconnecting feed are not the same kind of stop.
+
+    The first is evidence about the model and must ride out its cooldown. The
+    second is infrastructure we are already watching -- latching it means that
+    flapping feeds keep the bot switched off almost permanently while every
+    panel reads healthy, which is what happened on the first overnight run.
+    """
+
+    @staticmethod
+    def _engine():
+        return RiskEngine(RiskLimits(pause_seconds=300.0), 1000.0,
+                          clock=SimulatedClock(1_000.0))
+
+    def test_a_health_pause_lifts_as_soon_as_health_returns(self):
+        engine = self._engine()
+        engine.pause("system health: feeds down", latch=False)
+        assert engine.is_paused()
+        assert engine.clear_transient_pause() is True
+        assert not engine.is_paused()
+
+    def test_a_loss_stop_must_ride_out_its_cooldown(self):
+        engine = self._engine()
+        engine.pause("daily loss limit", severity="critical")
+        assert engine.clear_transient_pause() is False
+        assert engine.is_paused()
+        engine.clock.advance(299.0)
+        assert engine.is_paused()
+        engine.clock.advance(2.0)
+        assert not engine.is_paused()
+
+    def test_a_loss_stop_during_an_outage_survives_the_feeds_returning(self):
+        """The dangerous ordering: infrastructure noise must not clear risk."""
+        engine = self._engine()
+        engine.pause("system health: feeds down", latch=False)
+        engine.pause("max drawdown 12.0%", severity="critical")
+        assert engine.clear_transient_pause() is False
+        assert engine.is_paused()
+
+    def test_a_health_pause_on_top_of_a_loss_stop_stays_latched(self):
+        engine = self._engine()
+        engine.pause("consecutive losses", severity="critical")
+        engine.pause("system health: feeds down", latch=False)
+        assert engine.clear_transient_pause() is False
+
+    def test_clearing_is_a_no_op_when_nothing_is_paused(self):
+        engine = self._engine()
+        assert engine.clear_transient_pause() is False
+        assert not engine.is_paused()
+
+    def test_a_fresh_health_pause_after_an_expired_loss_stop_is_liftable(self):
+        """Expiry must reset the latch, or the next pause inherits it."""
+        engine = self._engine()
+        engine.pause("daily loss limit", severity="critical")
+        engine.clock.advance(301.0)
+        assert not engine.is_paused()
+        engine.pause("system health: feeds down", latch=False)
+        assert engine.clear_transient_pause() is True
+
+    def test_lifting_records_an_auditable_event(self):
+        engine = self._engine()
+        engine.pause("system health: feeds down", latch=False)
+        engine.clear_transient_pause("system health recovered")
+        kinds = [e.kind for e in engine.events]
+        assert kinds[-2:] == ["trading_pause", "trading_resume"]
+        assert engine.events[-1].message == "system health recovered"
+
+    def test_the_pause_event_records_whether_it_latched(self):
+        engine = self._engine()
+        engine.pause("system health: feeds down", latch=False)
+        assert engine.events[-1].detail["latched"] is False
+        engine.resume()
+        engine.pause("daily loss limit", severity="critical")
+        assert engine.events[-1].detail["latched"] is True
