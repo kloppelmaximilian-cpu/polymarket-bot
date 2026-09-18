@@ -350,6 +350,12 @@ class MispricingStrategy(Strategy):
     though it were trading against.  When that drifts far from the real strike
     the market is stale -- typically because a mover on the reference exchanges
     has not yet been repriced here.
+
+    Off by default.  It returns the analytic probability unchanged, which
+    ``fair_value`` already contributes and which market anchoring exists to
+    shrink, so running both double-weights the same disagreement.  Add
+    ``mispricing`` to ``ENABLED_STRATEGIES`` only with walk-forward evidence
+    that it pays for that.
     """
 
     name = "mispricing"

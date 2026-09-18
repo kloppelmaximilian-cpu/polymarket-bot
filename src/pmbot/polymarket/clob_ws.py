@@ -24,6 +24,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
+from ..core.tls import tls_kwargs as _tls_kwargs
 from ..core.types import FeedHealth, FeedStatus, Side
 from ..logging_setup import get_logger
 from ..orderbook.book import OrderBookManager
@@ -104,6 +105,7 @@ class PolymarketMarketFeed:
                 async with websockets.connect(
                     self.url, ping_interval=None, close_timeout=5,
                     max_queue=4096, open_timeout=15,
+                    **_tls_kwargs(self.url),
                 ) as ws:
                     self._ws = ws
                     attempt = 0

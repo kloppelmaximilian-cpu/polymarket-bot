@@ -233,6 +233,12 @@ class Settings(BaseSettings):
     paper_queue_model: Literal["optimistic", "realistic"] = "realistic"
 
     # -------------------------------------------------------------- strategy
+    # `mispricing` is implemented and tested but deliberately absent: it emits
+    # the analytic probability itself whenever it disagrees with the market,
+    # which is what `fair_value` already contributes and what the market
+    # anchoring exists to shrink. Enabling both double-weights the
+    # model-vs-market gap -- the adverse selection documented as finding 2 in
+    # docs/RESEARCH.md. Turn it on only with walk-forward evidence.
     enabled_strategies: list[str] = Field(
         default_factory=lambda: [
             "fair_value",

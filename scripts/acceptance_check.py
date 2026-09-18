@@ -208,6 +208,7 @@ def check_probability() -> None:
 
 # --- strategies ------------------------------------------------------------
 def check_strategies() -> None:
+    from pmbot.config import Settings
     from pmbot.core.types import Regime, StrategySignal
     from pmbot.strategies.ensemble import MetaModel
     from pmbot.strategies.signals import DEFAULT_STRATEGIES
@@ -217,10 +218,15 @@ def check_strategies() -> None:
          StrategySignal("momentum", 0.70, 0.7)],
         Regime.TRENDING,
     )
+    enabled = Settings().enabled_strategies
+    signal_strategies = [s for s in enabled if s != "ml"]
     check(
         "strategy ensemble works",
-        len(DEFAULT_STRATEGIES) == 9 and 0.60 < fused.probability_up < 0.70,
-        f"{len(DEFAULT_STRATEGIES)} strategies + ml; "
+        len(DEFAULT_STRATEGIES) == 9
+        and set(signal_strategies) <= set(DEFAULT_STRATEGIES)
+        and 0.60 < fused.probability_up < 0.70,
+        f"{len(DEFAULT_STRATEGIES)} implemented, "
+        f"{len(signal_strategies)} enabled by default + ml; "
         f"0.60 and 0.70 fuse to {fused.probability_up:.4f} in log-odds",
     )
 

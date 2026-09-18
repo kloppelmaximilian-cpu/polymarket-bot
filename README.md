@@ -86,7 +86,7 @@ bot dashboard                    # in another terminal
                    feature engine (80 features)
                            ▼
         ┌──────────────────┴──────────────────┐
-        │   9 strategies + regime detector    │
+        │   8 strategies + regime detector    │
         │   each outputs a drift in sigma     │
         └──────────────────┬──────────────────┘
                            ▼
@@ -311,7 +311,7 @@ two points overconfident turns a winning strategy into a losing one.
 
 ### Tests
 
-787 tests, all passing in about 45 seconds:
+803 tests, all passing in about 50 seconds:
 
 ```bash
 make test          # full suite
@@ -334,7 +334,7 @@ faked.
 | [SETUP.md](docs/SETUP.md) | Installation, environment, credentials, live-mode checklist |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Module map, data flow, design decisions |
 | [CONFIG.md](docs/CONFIG.md) | Every setting, what it does, how to tune it |
-| [STRATEGIES.md](docs/STRATEGIES.md) | All nine strategies, the regime detector, the meta-model |
+| [STRATEGIES.md](docs/STRATEGIES.md) | All nine strategies (eight on by default), the regime detector, the meta-model |
 | [BACKTESTING.md](docs/BACKTESTING.md) | Replay, walk-forward, Monte Carlo, getting real data |
 | [RISK.md](docs/RISK.md) | Limits, sizing, kill switches, what is deliberately absent |
 | [DASHBOARD.md](docs/DASHBOARD.md) | Every panel and key binding |

@@ -51,6 +51,35 @@ make install PYTHON=python3.12
 `make install` refuses to build the venv on too old an interpreter rather than
 letting pip fail halfway through with a less obvious message.
 
+**TLS certificates.** The python.org installer does not wire Python into the
+macOS keychain; it ships a script that installs certifi's CA bundle instead,
+and until that has run the trust store is empty. The symptom is confusing
+because it is *partial*: `bot discover` works, and every websocket dies with
+
+```
+[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed:
+unable to get local issuer certificate
+```
+
+REST goes through `httpx`, which carries certifi's bundle in the wheel;
+websockets used to ask OpenSSL for its own paths, which on that build point
+into an empty framework directory. The bot now verifies both against the same
+bundle, so a current checkout is unaffected. If you still see it, either the
+install predates that fix or something else supplies the context:
+
+```bash
+/Applications/Python\ 3.12/Install\ Certificates.command   # adjust the version
+```
+
+Behind a TLS-inspecting corporate proxy, point the bot at your own CA instead:
+
+```bash
+export PMBOT_CA_BUNDLE=/path/to/corporate-root.pem
+```
+
+`bot doctor` prints which store is in use and probes the market websocket, so
+it names this in one line rather than leaving you to read reconnect logs.
+
 **LightGBM needs OpenMP.** Its macOS wheels link against `libomp`, which
 Apple's toolchain does not provide, so importing it raises a `dlopen` error
 about `libomp.dylib`:

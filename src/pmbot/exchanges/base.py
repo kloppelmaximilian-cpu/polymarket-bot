@@ -24,6 +24,7 @@ from collections.abc import Awaitable, Callable, Iterable, Sequence
 from typing import Any
 
 from ..core.clock import Clock, default_clock
+from ..core.tls import tls_kwargs as _tls_kwargs
 from ..core.types import FeedHealth, FeedStatus, Tick
 from ..logging_setup import get_logger
 
@@ -128,6 +129,7 @@ class ExchangeFeed(ABC):
                     close_timeout=5,
                     max_queue=2048,
                     open_timeout=15,
+                    **_tls_kwargs(self.url),
                 ) as ws:
                     attempt = 0
                     self.health.status = FeedStatus.ONLINE

@@ -407,6 +407,29 @@ def doctor() -> None:
         str(model_dir),
     )
 
+    # The trust store is reported before any probe, because the two paths to
+    # it can disagree: httpx verifies against certifi, websockets against
+    # OpenSSL's own paths. When those differ, REST works and every websocket
+    # fails with "unable to get local issuer certificate".
+    from .core.tls import ssl_context_for, trust_store_summary
+
+    source, detail = trust_store_summary()
+    try:
+        n_certs = len(ssl_context_for("wss://example.invalid/").get_ca_certs())
+    except Exception as exc:  # noqa: BLE001
+        n_certs = -1
+        detail = f"{detail} ({type(exc).__name__})"
+    if n_certs > 0:
+        table.add_row(
+            "TLS trust store", f"[green]{source}[/green]",
+            f"{n_certs} CAs -- {detail[:44]}",
+        )
+    else:
+        table.add_row(
+            "TLS trust store", f"[red]empty ({source})[/red]",
+            "websockets will fail; see docs/SETUP.md#macos",
+        )
+
     async def probe() -> None:
         import httpx
 
@@ -428,6 +451,28 @@ def doctor() -> None:
                     name, "[red]unreachable[/red]",
                     f"{type(exc).__name__}: {str(exc)[:44]}",
                 )
+
+        # Exercise the websocket path too. A reachable REST API says nothing
+        # about it: the two use different trust stores, and the market feed is
+        # what the bot actually needs to price anything.
+        import websockets
+
+        from .core.tls import tls_kwargs
+
+        url = settings.clob_ws_market_url
+        try:
+            async with websockets.connect(
+                url, open_timeout=8, close_timeout=2, **tls_kwargs(url)
+            ):
+                table.add_row("market websocket", "[green]reachable[/green]", url[:56])
+        except Exception as exc:  # noqa: BLE001
+            hint = ""
+            if "CERTIFICATE_VERIFY_FAILED" in str(exc):
+                hint = " -- run the certificate installer, docs/SETUP.md#macos"
+            table.add_row(
+                "market websocket", "[red]unreachable[/red]",
+                f"{type(exc).__name__}: {str(exc)[:40]}{hint}",
+            )
 
     asyncio.run(probe())
     console.print(table)

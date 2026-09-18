@@ -15,7 +15,8 @@ This matters because "+0.5 sigma of momentum" means something completely
 different with 240 seconds left than with 20, and different for BTC at
 0.3%/5min than for DOGE at 1.5%. Routing every signal through the pricer makes
 the time- and volatility-scaling automatic and consistent, and puts all nine
-strategies on one comparable scale.
+strategies on one comparable scale. Eight of them plus `ml` are enabled by
+default; see [mispricing](#mispricing--off-by-default) for the one that is not.
 
 Each strategy is hard-capped at ±0.5 sigma. No five-minute signal deserves to
 move a probability further than that on its own.
@@ -106,7 +107,7 @@ This is information about the counterparty, not about bitcoin, so it is
 expressed as a tilt around the *market's* own de-vigged price rather than around
 our fair value. Abstains on a book thinner than $50.
 
-## mispricing
+## mispricing — **off by default**
 
 Direct model-versus-market disagreement. Inverting the market price yields the
 strike the market is behaving as though it were trading against; when that
@@ -115,6 +116,18 @@ on the reference exchanges has not been repriced here yet.
 
 Confidence is discounted when the model sits in a region where tiny price
 changes swing the probability wildly.
+
+It is not in `ENABLED_STRATEGIES`, so eight signal strategies plus `ml` run by
+default. The reason is that it returns the analytic probability *unchanged*:
+`fair_value` already contributes that, and market anchoring exists precisely to
+shrink it. Running both double-weights the model-versus-market gap, which is
+the adverse selection that cost real money in
+[RESEARCH.md finding 2](RESEARCH.md#2-the-biggest-edges-are-almost-always-your-own-bugs).
+Enable it only with walk-forward evidence that it earns its weight:
+
+```bash
+ENABLED_STRATEGIES=fair_value,momentum,mean_reversion,order_flow,breakout,volatility,cross_exchange,microstructure,mispricing,ml
+```
 
 ## ml
 
