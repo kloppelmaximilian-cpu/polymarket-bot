@@ -313,7 +313,7 @@ two points overconfident turns a winning strategy into a losing one.
 
 ### Tests
 
-857 tests, all passing in about a minute:
+863 tests, all passing in about a minute:
 
 ```bash
 make test          # full suite

@@ -112,6 +112,9 @@ class BotRunner:
         self._stop = asyncio.Event()
         self._tasks: list[asyncio.Task] = []
         self._markets: dict[str, Market] = {}
+        #: token id -> market, rebuilt on each discovery cycle. Read on
+        #: the websocket hot path, so it must not be a scan.
+        self._market_by_token: dict[str, Market] = {}
         self._last_snapshot: dict[str, float] = {}
         self._last_pnl_snapshot = 0.0
         self._settled: set[str] = set()
@@ -439,6 +442,11 @@ class BotRunner:
         self._markets = keep
 
         tokens = {t for m in self._markets.values() for t in m.token_ids}
+        self._market_by_token = {
+            token_id: market
+            for market in self._markets.values()
+            for token_id in market.token_ids
+        }
         await self.pm_feed.set_tokens(tokens)
         self.books.prune(tokens)
         self.features.prune(set(self._markets))
@@ -1078,9 +1086,10 @@ class BotRunner:
     def _on_pm_event(self, event_type: str, message: dict) -> None:
         if event_type == "last_trade_price":
             token_id = str(message.get("asset_id") or "")
-            market = next(
-                (m for m in self._markets.values() if token_id in m.token_ids), None
-            )
+            # Called for every trade print on every tracked token. A scan over
+            # markets x token ids here is paid a thousand times a second, and
+            # falling behind gets us disconnected as a slow consumer.
+            market = self._market_by_token.get(token_id)
             self.db.enqueue("public_trades", {
                 "ts": self.clock.time(),
                 "market_id": market.market_id if market else None,

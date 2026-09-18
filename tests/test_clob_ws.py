@@ -228,3 +228,52 @@ class TestPolymarketSilenceWatchdog:
         feed.health.last_message_at = time.time() - 600
         await feed._watchdog(FakeWs(), connected_at=time.time() - 600)
         assert closed == {"code": 1011}
+
+
+class TestReadLoopCost:
+    """Polymarket disconnects a client that cannot keep up.
+
+    `received 1013 (try again later) slow consumer: send buffer full` is the
+    server saying our reads fell behind: the frame queue filled, websockets
+    stopped draining the socket, and the venue gave up on us. Everything on
+    this path is paid at the full message rate.
+    """
+
+    @staticmethod
+    def _feed():
+        from pmbot.orderbook.book import OrderBookManager
+        from pmbot.polymarket.clob_ws import PolymarketMarketFeed
+
+        return PolymarketMarketFeed(OrderBookManager())
+
+    def test_the_rate_window_is_bounded_without_copying(self):
+        """It was a list re-sliced on every message past the 200th."""
+        from collections import deque
+
+        feed = self._feed()
+        assert isinstance(feed._msg_times, deque)
+        assert feed._msg_times.maxlen == 200
+
+        for _ in range(1000):
+            feed._note_message()
+        assert len(feed._msg_times) == 200
+        assert feed.health.messages == 1000
+        assert feed.health.messages_per_sec >= 0.0
+
+    def test_platform_wide_announcements_do_not_log_at_info(self, caplog):
+        """Every FX pair, metal and energy market on Polymarket arrives here."""
+        import logging
+
+        caplog.set_level(logging.INFO)
+        feed = self._feed()
+        for question in ("Gold (XAUUSD) Up or Down?", "US Dollar / Turkish Lira?"):
+            feed._handle({"event_type": "new_market", "question": question})
+        assert [r for r in caplog.records if r.levelno >= logging.INFO] == []
+
+    def test_announcements_are_still_available_at_debug(self, caplog):
+        import logging
+
+        caplog.set_level(logging.DEBUG)
+        feed = self._feed()
+        feed._handle({"event_type": "new_market", "question": "Gold Up or Down?"})
+        assert any("new market" in r.getMessage() for r in caplog.records)

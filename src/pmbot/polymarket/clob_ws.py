@@ -21,6 +21,7 @@ import contextlib
 import json
 import random
 import time
+from collections import deque
 from collections.abc import Callable
 from typing import Any
 
@@ -70,7 +71,7 @@ class PolymarketMarketFeed:
         self._stop = asyncio.Event()
         self._task: asyncio.Task | None = None
         self._pending_ops: asyncio.Queue[tuple[str, list[str]]] = asyncio.Queue()
-        self._msg_times: list[float] = []
+        self._msg_times: deque[float] = deque(maxlen=200)
         self._parse_errors = 0
 
     # -------------------------------------------------------------- control
@@ -326,7 +327,10 @@ class PolymarketMarketFeed:
             )
 
     def _on_new_market(self, message: dict[str, Any]) -> None:
-        self.log.info(
+        # Platform-wide: FX pairs, metals, energy, everything. We find our own
+        # markets through Gamma discovery, so at INFO this both drowns the log
+        # and does synchronous file I/O inside the read loop.
+        self.log.debug(
             "new market announced",
             extra={"question": str(message.get("question", ""))[:80]},
         )
@@ -337,8 +341,6 @@ class PolymarketMarketFeed:
         self.health.messages += 1
         self.health.last_message_at = now
         self._msg_times.append(now)
-        if len(self._msg_times) > 200:
-            del self._msg_times[:-200]
         if len(self._msg_times) >= 2:
             span = self._msg_times[-1] - self._msg_times[0]
             if span > 0:

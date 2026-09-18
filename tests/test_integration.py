@@ -358,3 +358,72 @@ async def _cycle(bot, ts: float) -> None:
     """Advance the shared simulated clock and run one real main-loop cycle."""
     bot.sim_clock.set(ts)
     await bot._cycle()
+
+
+class TestTokenIndex:
+    """The websocket calls back per trade print; a scan there is not free."""
+
+    @staticmethod
+    async def _runner(tmp_path):
+        settings = Settings(
+            database_url=f"sqlite:///{tmp_path}/b.db",
+            log_dir=tmp_path / "logs", model_dir=tmp_path / "models",
+        )
+        bot = BotRunner(settings)
+        await bot.db.start()
+        return bot
+
+    async def test_trade_prints_resolve_their_market_by_index(self, tmp_path):
+        from tests.conftest import make_market
+
+        bot = await self._runner(tmp_path)
+        try:
+            market = make_market()
+            bot._markets = {market.market_id: market}
+            bot._market_by_token = dict.fromkeys(market.token_ids, market)
+
+            token_id = market.token_ids[0]
+            bot._on_pm_event("last_trade_price", {
+                "asset_id": token_id, "price": "0.52", "size": "10", "side": "BUY",
+            })
+            await bot.db.flush()
+            rows = await bot.db.query("SELECT * FROM public_trades")
+            assert len(rows) == 1
+            assert rows[0]["market_id"] == market.market_id
+            assert rows[0]["token_id"] == token_id
+            assert rows[0]["price"] == pytest.approx(0.52)
+        finally:
+            await bot.db.stop()
+
+    async def test_a_print_for_an_unknown_token_is_still_recorded(self, tmp_path):
+        """A market we just dropped must not lose its prints or raise."""
+        bot = await self._runner(tmp_path)
+        try:
+            bot._on_pm_event("last_trade_price", {
+                "asset_id": "unknown", "price": "0.5", "size": "1", "side": "BUY",
+            })
+            await bot.db.flush()
+            rows = await bot.db.query("SELECT * FROM public_trades")
+            assert len(rows) == 1
+            assert rows[0]["market_id"] is None
+        finally:
+            await bot.db.stop()
+
+    async def test_the_index_is_rebuilt_to_match_the_tracked_markets(self, tmp_path):
+        """Stale entries would attribute prints to a market we no longer hold."""
+        from tests.conftest import make_market
+
+        bot = await self._runner(tmp_path)
+        try:
+            old = make_market(market_id="old")
+            bot._market_by_token = dict.fromkeys(old.token_ids, old)
+            new = make_market(market_id="new")
+            bot._markets = {new.market_id: new}
+            bot._market_by_token = {
+                token_id: market
+                for market in bot._markets.values()
+                for token_id in market.token_ids
+            }
+            assert set(bot._market_by_token) == set(new.token_ids)
+        finally:
+            await bot.db.stop()

@@ -145,6 +145,24 @@ grep '"event": "connection failed"' logs/pmbot.log | tail -20
 grep 'socket open but silent' logs/pmbot.log | tail
 ```
 
+### `slow consumer: send buffer full` from Polymarket
+
+Code 1013. The venue is saying our reads fell behind: the frame queue filled,
+the library stopped draining the socket, and Polymarket gave up on us. It is
+our problem, not theirs, and it repeats every few seconds until fixed.
+
+Everything on the websocket path is paid at the full message rate — roughly a
+thousand messages a second across 40 subscribed tokens. Check, in order:
+
+1. `LOG_LEVEL`. At `DEBUG` every message formats JSON and writes to two
+   handlers from inside the read loop. Use `INFO` when trading.
+2. `MAX_TRACKED_MARKETS`. Twenty markets is forty token subscriptions; each
+   one adds book deltas and trade prints.
+3. Anything slow in `_on_pm_event`. It runs per print and must stay O(1).
+
+Dropping messages is not an option for an order book: the deltas rebuild it,
+so a dropped one leaves the book wrong rather than stale.
+
 ### Feeds go offline and never come back
 
 Look at what the log says, because two very different faults look identical on
