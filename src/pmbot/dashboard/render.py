@@ -12,7 +12,7 @@ from typing import Any
 
 from rich.align import Align
 from rich.box import SIMPLE_HEAD
-from rich.console import Group
+from rich.console import Console, Group
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -204,16 +204,55 @@ def account_panel(state: DashboardState) -> Panel:
     return Panel(table, title="ACCOUNT / RISK", border_style="blue")
 
 
-def market_table(state: DashboardState, sort_key: str = "edge") -> Panel:
+#: (header, justify, minimum console width, value)
+#
+# Eighteen no-wrap columns in an 80-column terminal is not a table, it is a
+# column of "0...". Each one declares the width it needs, and anything that
+# does not fit is dropped rather than truncated into uselessness -- the ones
+# you cannot do without (what it costs, what we think, what the gate decided)
+# are the ones that survive to the narrowest layout.
+_MARKET_COLUMNS: tuple[tuple[str, str, int, Any], ...] = (
+    ("asset", "left", 0,
+     lambda m: Text(str(m.get("asset", "?")),
+                    style="bold" if m.get("in_window") else "dim")),
+    ("left", "right", 0, lambda m: _clock(m.get("seconds_remaining"))),
+    ("up bid", "right", 100, lambda m: _num(m.get("up_bid"), 3)),
+    ("up ask", "right", 0, lambda m: _num(m.get("up_ask"), 3)),
+    ("no ask", "right", 150, lambda m: _num(m.get("down_ask"), 3)),
+    ("spr", "right", 120, lambda m: _num(m.get("spread"), 3)),
+    ("liq$", "right", 110, lambda m: f"{float(m.get('liquidity') or 0):.0f}"),
+    ("spot", "right", 160, lambda m: _num(m.get("spot"), 2)),
+    ("strike", "right", 160, lambda m: _num(m.get("strike"), 2)),
+    ("dist bp", "right", 0,
+     lambda m: _money(m.get("distance_bps"), 1, signed=True)),
+    ("model", "right", 0, lambda m: _num(m.get("model_up"), 3)),
+    ("market", "right", 0, lambda m: _num(m.get("market_up"), 3)),
+    ("edge", "right", 0, lambda m: _money(m.get("edge"), 4, signed=True)),
+    ("req", "right", 130, lambda m: _num(m.get("required_edge"), 4)),
+    ("conf", "right", 120, lambda m: _num(m.get("confidence"), 2)),
+    ("regime", "left", 140, lambda m: Text(str(m.get("regime") or "-")[:12], style="dim")),
+    ("decision", "left", 0,
+     lambda m: Text(str(m.get("decision") or "-")[:18],
+                    style=DECISION_STYLES.get(str(m.get("decision") or "-"), "dim"))),
+)
+
+
+def _console_width(explicit: int | None = None) -> int:
+    if explicit is not None:
+        return explicit
+    try:
+        return Console().width
+    except Exception:  # noqa: BLE001 - no terminal, e.g. a pipe
+        return 120
+
+
+def market_table(
+    state: DashboardState, sort_key: str = "edge", width: int | None = None
+) -> Panel:
+    available = _console_width(width)
+    columns = [c for c in _MARKET_COLUMNS if available >= c[2]]
     table = Table(box=SIMPLE_HEAD, expand=True, pad_edge=False)
-    for name, justify in (
-        ("asset", "left"), ("left", "right"), ("YES", "right"), ("NO", "right"),
-        ("bid", "right"), ("ask", "right"), ("spr", "right"), ("liq$", "right"),
-        ("spot", "right"), ("strike", "right"), ("dist bp", "right"),
-        ("model", "right"), ("market", "right"), ("edge", "right"),
-        ("req", "right"), ("conf", "right"), ("regime", "left"),
-        ("decision", "left"),
-    ):
+    for name, justify, _min_width, _value in columns:
         table.add_column(name, justify=justify, no_wrap=True)
 
     markets = list(state.markets)
@@ -236,30 +275,9 @@ def market_table(state: DashboardState, sort_key: str = "edge") -> Panel:
         markets.sort(key=lambda m: float(m.get("edge") or -1.0), reverse=reverse)
 
     for market in markets[:24]:
-        decision = str(market.get("decision") or "-")
-        table.add_row(
-            Text(str(market.get("asset", "?")),
-                 style="bold" if market.get("in_window") else "dim"),
-            _clock(market.get("seconds_remaining")),
-            _num(market.get("up_ask"), 3),
-            _num(market.get("down_ask"), 3),
-            _num(market.get("up_bid"), 3),
-            _num(market.get("up_ask"), 3),
-            _num(market.get("spread"), 3),
-            f"{float(market.get('liquidity') or 0):.0f}",
-            _num(market.get("spot"), 2),
-            _num(market.get("strike"), 2),
-            _money(market.get("distance_bps"), 1, signed=True),
-            _num(market.get("model_up"), 3),
-            _num(market.get("market_up"), 3),
-            _money(market.get("edge"), 4, signed=True),
-            _num(market.get("required_edge"), 4),
-            _num(market.get("confidence"), 2),
-            Text(str(market.get("regime") or "-")[:12], style="dim"),
-            Text(decision[:18], style=DECISION_STYLES.get(decision, "dim")),
-        )
+        table.add_row(*[value(market) for _n, _j, _w, value in columns])
     if not markets:
-        table.add_row(*["--"] * 18)
+        table.add_row(*["--"] * len(columns))
     return Panel(
         table,
         title=f"MARKET MONITOR  ({len(state.markets)} tracked, sorted by {sort_key})",

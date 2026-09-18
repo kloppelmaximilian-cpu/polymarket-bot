@@ -185,7 +185,7 @@ def markets(
     """Currently monitored 5-minute markets."""
     from .dashboard.render import market_table
 
-    console.print(market_table(_read_state(), sort))
+    console.print(market_table(_read_state(), sort, width=console.width))
 
 
 @app.command()

@@ -267,7 +267,10 @@ class TestRenderers:
         assert console.export_text().strip()
 
     def test_market_table_shows_the_economics(self, state_file):
-        output = render(market_table, StateReader(state_file(full_snapshot())).read())
+        state = StateReader(state_file(full_snapshot())).read()
+        # Width is explicit: the column set depends on it, and the console
+        # this renders into is not the one the default would measure.
+        output = render(lambda s: market_table(s, width=200), state)
         assert "TRADE" in output
         assert "TRENDING" in output
 
@@ -352,3 +355,69 @@ class TestPauseWarning:
     def test_no_warning_when_not_paused(self):
         state = self._state(trading_paused=False)
         assert not any("PAUSED" in w for w in state.warnings())
+
+
+class TestMarketTableFitsTheTerminal:
+    """Eighteen no-wrap columns in an 80-column terminal is a column of `0...`.
+
+    The monitor is the screen you read to answer "why is it not trading", so
+    losing every number to truncation defeats its only purpose.
+    """
+
+    @staticmethod
+    def _render(width: int) -> str:
+        from rich.console import Console
+
+        from pmbot.dashboard.render import market_table
+        from pmbot.dashboard.state import DashboardState
+
+        state = DashboardState(connected=True, payload=full_snapshot())
+        console = Console(width=width, force_terminal=False)
+        with console.capture() as capture:
+            console.print(market_table(state, width=width))
+        return capture.get()
+
+    def test_the_decisive_columns_survive_the_narrowest_terminal(self):
+        out = self._render(80)
+        for header in ("asset", "left", "up ask", "dist bp", "model", "market",
+                       "edge", "decision"):
+            assert header in out, header
+
+    def test_nothing_is_truncated_at_eighty_columns(self):
+        """A single ellipsis in the header means the width budget is wrong."""
+        header = [ln for ln in self._render(80).splitlines() if "asset" in ln][0]
+        assert "…" not in header
+
+    def test_a_wide_terminal_gets_the_full_picture(self):
+        out = self._render(200)
+        for header in ("spot", "strike", "regime", "req", "conf", "no ask"):
+            assert header in out, header
+
+    def test_columns_are_added_as_the_terminal_grows(self):
+        widths = [len([h for h in ("up bid", "spr", "liq$", "req", "conf",
+                                   "regime", "spot", "strike", "no ask")
+                       if h in self._render(w)])
+                  for w in (80, 110, 130, 160, 200)]
+        assert widths == sorted(widths)
+        assert widths[0] < widths[-1]
+
+    def test_the_up_ask_is_not_shown_twice(self):
+        """`YES` and `ask` were the same field under two names."""
+        header = [ln for ln in self._render(200).splitlines() if "asset" in ln][0]
+        assert header.count("up ask") == 1
+        assert "YES" not in header
+
+    def test_an_empty_market_list_still_renders(self):
+        from rich.console import Console
+
+        from pmbot.dashboard.render import market_table
+        from pmbot.dashboard.state import DashboardState
+
+        payload = full_snapshot()
+        payload["markets"] = []
+        console = Console(width=100, force_terminal=False)
+        with console.capture() as capture:
+            console.print(market_table(
+                DashboardState(connected=True, payload=payload), width=100
+            ))
+        assert "MARKET MONITOR" in capture.get()
