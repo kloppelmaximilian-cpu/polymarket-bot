@@ -9,5 +9,13 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
   },
-  "dependencies": { "@aoc/core": "workspace:*", "ws": "^8.22.0", "zod": "^4.6.5" }
+  "dependencies": {
+    "@aoc/core": "workspace:*",
+    "ws": "^8.22.0",
+    "zod": "^4.6.5",
+    "@aoc/strategies": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.2"
+  }
 }

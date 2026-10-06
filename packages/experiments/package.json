@@ -9,5 +9,9 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
   },
-  "dependencies": { "@aoc/core": "workspace:*", "@aoc/backtest": "workspace:*", "@aoc/strategies": "workspace:*" }
+  "dependencies": {
+    "@aoc/backtest": "workspace:*",
+    "@aoc/core": "workspace:*",
+    "@aoc/strategies": "workspace:*"
+  }
 }
