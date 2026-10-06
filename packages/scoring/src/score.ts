@@ -12,7 +12,7 @@ import type { QualitativeProfile } from '@aoc/strategies';
  *  2. Weighted mean of the components that have data.
  *  3. Non-compensatory risk adjustment: × (0.5 + 0.5 · risk/100), so high
  *     profit cannot buy back high risk.
- *  4. Hard caps: no profit evidence ≤ 60, extreme risk ≤ 40, negative
+ *  4. Hard caps: no profit evidence ≤ 60, untested ≤ 50, extreme risk ≤ 40, negative
  *     expectancy ≤ 25, FAILED ≤ 15.
  *
  * Profit is only scored from evidence that can carry it: HISTORICAL or PAPER
@@ -290,6 +290,8 @@ export function computeScore(input: ScoringInput): ScoreResult {
     }
   };
   if (c.profit === null) cap(60, 'No profit evidence');
+  // Nothing has been run yet: an untested idea must not outrank a tested one (same cap as the idea pre-screen).
+  if (evidence === 'HYPOTHETICAL') cap(50, 'Untested: no backtest or simulation yet');
   const unverified = !!b && input.kind === 'BUSINESS' && b.verifiedAssumptionShare < 0.5;
   if (unverified) cap(60, 'Estimate rests mostly on unverified assumptions');
   if (input.riskLevel === 'EXTREME') cap(40, 'Extreme risk level');

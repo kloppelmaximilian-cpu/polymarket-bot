@@ -47,6 +47,14 @@ describe('opportunity score', () => {
     expect(s.explanation.join()).toMatch(/DEMO/);
   });
 
+  it('keeps untested experiments below tested ones (HYPOTHETICAL ≤ 50)', () => {
+    const excellent = { ...q, automation: 100, scalability: 100, operationalSimplicity: 100, recurringRevenue: 100, competition: 100, dependencySafety: 100, dataAvailability: 100, executionSafety: 100, timeToRevenueDays: 0 };
+    const untested = computeScore(input({ riskLevel: 'LOW', qualitative: excellent, finance: undefined }));
+    expect(untested.evidence).toBe('HYPOTHETICAL');
+    expect(untested.overall).toBeLessThanOrEqual(50);
+    expect(untested.caps.join()).toMatch(/Untested/);
+  });
+
   it('treats too few trades as NO DATA', () => {
     expect(computeScore(input({ finance: fin({ trades: 3 }) })).components.profit).toBeNull();
   });

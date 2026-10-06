@@ -79,14 +79,61 @@ async function accountsByExperiment(db: DbOrTx, experimentIds: string[]): Promis
   return out;
 }
 
-async function latestEvidence(db: DbOrTx, experimentIds: string[]): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
-  if (experimentIds.length === 0) return out;
+export interface KeyResult {
+  runType: 'BACKTEST' | 'SIMULATION';
+  provenance: string;
+  /** Net profit of the backtest, or the median cumulative profit of the business simulation. */
+  profit: number | null;
+  /** Total return of the backtest, or median profit over the simulated budget. */
+  roiPct: number | null;
+  maxDrawdownPct: number | null;
+  /** Business only: probability the simulated business runs out of money. */
+  probRuin: number | null;
+  horizon: string;
+  at: string;
+}
+
+/** Latest backtest or business simulation per experiment (for its current version). */
+async function latestKeyResults(db: DbOrTx, rows: ExperimentRow[]): Promise<Map<string, KeyResult>> {
+  const out = new Map<string, KeyResult>();
+  const versionIds = rows.map((r) => r.currentVersionId).filter((v): v is string => !!v);
+  if (versionIds.length === 0) return out;
   const res = await db.execute(
-    sql`SELECT DISTINCT ON (experiment_id) experiment_id, provenance FROM strategy_runs WHERE run_type IN ('BACKTEST','SIMULATION') AND status = 'SUCCEEDED' AND experiment_id IN (${sql.join(experimentIds.map((id) => sql`${id}::uuid`), sql`, `)}) ORDER BY experiment_id, created_at DESC`,
+    sql`SELECT DISTINCT ON (version_id) experiment_id, run_type, provenance, summary, created_at FROM strategy_runs WHERE run_type IN ('BACKTEST','SIMULATION') AND status = 'SUCCEEDED' AND version_id IN (${sql.join(versionIds.map((id) => sql`${id}::uuid`), sql`, `)}) ORDER BY version_id, created_at DESC`,
   );
-  for (const r of rowsOf<{ experiment_id: string; provenance: string }>(res)) out.set(String(r.experiment_id), r.provenance);
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  for (const r of rowsOf<{ experiment_id: string; run_type: 'BACKTEST' | 'SIMULATION'; provenance: string; summary: unknown; created_at: string | Date }>(res)) {
+    const s = (typeof r.summary === 'string' ? JSON.parse(r.summary) : r.summary) as Record<string, unknown>;
+    const at = new Date(r.created_at).toISOString();
+    if (r.run_type === 'BACKTEST') {
+      out.set(String(r.experiment_id), { runType: 'BACKTEST', provenance: r.provenance, profit: num(s.netProfit), roiPct: num(s.totalReturnPct), maxDrawdownPct: num(s.maxDrawdownPct), probRuin: null, horizon: 'backtest window', at });
+    } else {
+      const p50 = num((s.cumulativeProfit as Record<string, unknown> | undefined)?.p50);
+      // No ROI for business estimates: the simulated budget is a cash buffer sized from the estimate
+      // itself, so profit / budget would be a meaningless (and misleadingly large) percentage.
+      out.set(String(r.experiment_id), { runType: 'SIMULATION', provenance: r.provenance, profit: p50, roiPct: null, maxDrawdownPct: null, probRuin: num(s.probRuin), horizon: '24 months (median)', at });
+    }
+  }
   return out;
+}
+
+const NEXT_ACTION: Record<string, string> = {
+  DISCOVERED: 'Start research (manual decision)',
+  RESEARCHING: 'Pipeline builds the prototype',
+  PROTOTYPE: 'Pipeline runs the backtest / simulation suite',
+  BACKTESTING: 'Backtest / simulation suite running',
+  EVALUATING: 'Quality gates decide: paper, probation or failed',
+  PAPER: 'Collect paper evidence (reviewed every 6 h)',
+  PROMISING: 'Keep paper testing until the live-review gate passes',
+  PROBATION: 'Improve weak metrics (Strategy Lab) or it fails',
+  READY_FOR_LIVE_REVIEW: 'Human review only — live trading stays disabled',
+  PAUSED: 'Check the reason, then resume manually',
+  FAILED: 'Read the failure reasons; revise as a new version or archive',
+  ARCHIVED: '—',
+};
+
+export function nextActionFor(status: string): string {
+  return NEXT_ACTION[status] ?? '—';
 }
 
 export interface ExperimentListItem {
@@ -109,6 +156,8 @@ export interface ExperimentListItem {
   createdAt: string;
   lastActivityAt: string | null;
   evidence: string | null;
+  keyResult: KeyResult | null;
+  nextAction: string;
   score: { overall: number; components: Record<string, number | null>; confidence: string; evidence: string; rank: number | null; computedAt: string } | null;
   paper: { accountId: string; provenance: string; status: string; startingCapital: number; equity: number; pnl: number; pnlPct: number | null; isDemo: boolean } | null;
 }
@@ -127,7 +176,7 @@ export async function listExperiments(ctx: PlatformContext, f: ExperimentListFil
   if (f.search) where.push(or(ilike(experiments.name, `%${f.search}%`), ilike(experiments.description, `%${f.search}%`), ilike(experiments.strategyId, `%${f.search}%`))!);
   const rows = await ctx.db.select().from(experiments).where(where.length ? and(...where) : undefined);
   const ids = rows.map((r) => r.id);
-  const [scoreMap, accounts, evidence] = await Promise.all([latestScores(ctx.db), accountsByExperiment(ctx.db, ids), latestEvidence(ctx.db, ids)]);
+  const [scoreMap, accounts, keyResults] = await Promise.all([latestScores(ctx.db), accountsByExperiment(ctx.db, ids), latestKeyResults(ctx.db, rows)]);
   const equity = await latestEquity(ctx.db, [...accounts.values()].map((a) => a.id));
   let items: ExperimentListItem[] = rows.map((r) => {
     const s = scoreMap.get(r.id);
@@ -153,7 +202,9 @@ export async function listExperiments(ctx: PlatformContext, f: ExperimentListFil
       isDemo: r.isDemo,
       createdAt: r.createdAt.toISOString(),
       lastActivityAt: r.lastActivityAt?.toISOString() ?? null,
-      evidence: evidence.get(r.id) ?? null,
+      evidence: keyResults.get(r.id)?.provenance ?? null,
+      keyResult: keyResults.get(r.id) ?? null,
+      nextAction: nextActionFor(r.status),
       score: s ? { overall: s.overall, components: s.components, confidence: s.confidence, evidence: s.evidence, rank: s.rank, computedAt: s.computedAt.toISOString() } : null,
       paper: a && eq_ !== null ? { accountId: a.id, provenance: a.provenance, status: a.status, startingCapital: start, equity: eq_, pnl: eq_ - start, pnlPct: start > 0 ? (eq_ - start) / start : null, isDemo: a.isDemo } : null,
     };
@@ -231,7 +282,8 @@ export async function dashboard(ctx: PlatformContext) {
       byStatus: Object.fromEntries([...new Set(live.map((e) => e.status))].map((s) => [s, live.filter((e) => e.status === s).length])),
       failed: live.filter((e) => e.status === 'FAILED').length,
     },
-    paperPortfolio: { ...paper, fund: ctx.config.PAPER_TOTAL_CAPITAL_USD, allocated: activeAccounts.reduce((s, a) => s + Number(a.startingCapital), 0) },
+    paperPortfolio: { ...paper, fund: ctx.config.PAPER_TOTAL_CAPITAL_USD, allocated: activeAccounts.filter((a) => a.provenance === 'PAPER').reduce((s, a) => s + Number(a.startingCapital), 0) },
+    simulationBudget: { total: ctx.config.BUSINESS_SIM_BUDGET_USD, allocated: activeAccounts.filter((a) => a.provenance === 'SIMULATED').reduce((s, a) => s + Number(a.startingCapital), 0) },
     simulatedBusiness: simulated,
     totalSimulatedProfit: { paper: paper.pnl, simulatedOperations: simulated.pnl, note: 'PAPER = virtual money on live data; SIMULATED = business operating simulations. They are reported separately and never added together. DEMO results are excluded.' },
     totalCapitalSimulated: paper.accounts + simulated.accounts > 0 ? paper.capital + simulated.capital : null,
@@ -308,19 +360,25 @@ export async function experimentDetail(ctx: PlatformContext, idOrSlug: string) {
   };
 }
 
+/** Side-by-side comparison: list fields plus the latest run summaries of each current version. */
 export async function compareExperiments(ctx: PlatformContext, ids: string[]) {
   const items = (await listExperiments(ctx, { includeArchived: true })).filter((e) => ids.includes(e.id));
+  const exps = ids.length ? await ctx.db.select({ id: experiments.id, currentVersionId: experiments.currentVersionId }).from(experiments).where(inArray(experiments.id, ids)) : [];
   const runs = ids.length
     ? await ctx.db
-        .select()
+        .select({ experimentId: strategyRuns.experimentId, versionId: strategyRuns.versionId, runType: strategyRuns.runType, provenance: strategyRuns.provenance, summary: strategyRuns.summary, createdAt: strategyRuns.createdAt })
         .from(strategyRuns)
-        .where(and(inArray(strategyRuns.experimentId, ids), inArray(strategyRuns.runType, ['BACKTEST', 'SIMULATION']), eq(strategyRuns.status, 'SUCCEEDED')))
+        .where(and(inArray(strategyRuns.experimentId, ids), eq(strategyRuns.status, 'SUCCEEDED')))
         .orderBy(desc(strategyRuns.createdAt))
     : [];
-  return items.map((e) => {
-    const run = runs.find((r) => r.experimentId === e.id);
-    return { ...e, keyResult: run ? { runType: run.runType, provenance: run.provenance, summary: run.summary } : null };
-  });
+  return items
+    .sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id))
+    .map((e) => {
+      const versionId = exps.find((x) => x.id === e.id)?.currentVersionId;
+      const latest: Record<string, { provenance: string; summary: unknown; at: Date }> = {};
+      for (const r of runs) if (r.experimentId === e.id && r.versionId === versionId && !latest[r.runType]) latest[r.runType] = { provenance: r.provenance, summary: r.summary, at: r.createdAt };
+      return { ...e, runs: latest };
+    });
 }
 
 export async function listStrategies(ctx: PlatformContext) {
@@ -379,8 +437,13 @@ export async function portfolio(ctx: PlatformContext) {
     });
   }
   const active = rows.filter((r) => r.status === 'ACTIVE');
-  const allocated = active.reduce((s, r) => s + r.startingCapital, 0);
-  return { fund: { total: ctx.config.PAPER_TOTAL_CAPITAL_USD, allocated, unallocated: ctx.config.PAPER_TOTAL_CAPITAL_USD - allocated, defaultAllocation: ctx.config.PAPER_DEFAULT_ALLOCATION_USD }, accounts: rows };
+  const allocated = active.filter((r) => r.provenance === 'PAPER').reduce((s, r) => s + r.startingCapital, 0);
+  const simAllocated = active.filter((r) => r.provenance === 'SIMULATED').reduce((s, r) => s + r.startingCapital, 0);
+  return {
+    fund: { total: ctx.config.PAPER_TOTAL_CAPITAL_USD, allocated, unallocated: ctx.config.PAPER_TOTAL_CAPITAL_USD - allocated, defaultAllocation: ctx.config.PAPER_DEFAULT_ALLOCATION_USD },
+    simulationBudget: { total: ctx.config.BUSINESS_SIM_BUDGET_USD, allocated: simAllocated, unallocated: ctx.config.BUSINESS_SIM_BUDGET_USD - simAllocated },
+    accounts: rows,
+  };
 }
 
 export async function accountDetail(ctx: PlatformContext, accountId: string) {
@@ -411,17 +474,20 @@ export async function performance(ctx: PlatformContext, opts: { limit?: number }
     curves.push({ id: e.id, name: e.name, category: e.category, kind: e.kind, paperProvenance: e.paper?.provenance ?? null, backtestProvenance: bt?.provenance ?? null, paper: paperCurve, backtest: btCurve, score: e.score?.overall ?? null });
   }
   const byCategory = Object.values(
-    items.reduce<Record<string, { category: string; experiments: number; avgScore: number; scored: number; paperPnl: number }>>((acc, e) => {
-      const c = (acc[e.category] ??= { category: e.category, experiments: 0, avgScore: 0, scored: 0, paperPnl: 0 });
+    items.reduce<Record<string, { category: string; experiments: number; avgScore: number; scored: number; paperPnl: number; accounts: number }>>((acc, e) => {
+      const c = (acc[e.category] ??= { category: e.category, experiments: 0, avgScore: 0, scored: 0, paperPnl: 0, accounts: 0 });
       c.experiments++;
       if (e.score) {
         c.avgScore += e.score.overall;
         c.scored++;
       }
-      if (e.paper && !e.paper.isDemo) c.paperPnl += e.paper.pnl;
+      if (e.paper && !e.paper.isDemo) {
+        c.paperPnl += e.paper.pnl;
+        c.accounts++;
+      }
       return acc;
     }, {}),
-  ).map((c) => ({ ...c, avgScore: c.scored ? c.avgScore / c.scored : null }));
+  ).map((c) => ({ ...c, avgScore: c.scored ? c.avgScore / c.scored : null, paperPnl: c.accounts ? c.paperPnl : null }));
   return { curves, byCategory };
 }
 

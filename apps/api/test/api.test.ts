@@ -145,7 +145,7 @@ describe('experiments', () => {
     const b = await newExperiment('trading.breakout');
     const res = await get(`/v1/compare?ids=${a.id},${b.id}`);
     expect(res.statusCode).toBe(200);
-    expect(res.json().rows ?? res.json()).toHaveLength(2);
+    expect(res.json().map((x: { id: string }) => x.id)).toEqual([a.id, b.id]);
     expect((await get('/v1/compare?ids=not-a-uuid')).statusCode).toBe(400);
   });
 

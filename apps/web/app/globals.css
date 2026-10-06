@@ -1,0 +1,105 @@
+@import 'tailwindcss';
+
+/* Theme tokens: dark is the default, light is opt-in via data-theme. */
+:root {
+  --bg: #0a0d12;
+  --surface: #10151c;
+  --surface-2: #161d26;
+  --surface-3: #1d2631;
+  --border: #252f3b;
+  --text: #e6edf3;
+  --muted: #8a96a5;
+  --accent: #5b8cff;
+  --positive: #2fbf71;
+  --negative: #f05252;
+  --warning: #f5a524;
+  --info: #38bdf8;
+  --demo: #c084fc;
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  --bg: #f5f7fa;
+  --surface: #ffffff;
+  --surface-2: #f0f3f7;
+  --surface-3: #e6ebf1;
+  --border: #d5dce4;
+  --text: #17202b;
+  --muted: #5a6675;
+  --accent: #2f6bf0;
+  --positive: #148a4d;
+  --negative: #d02f2f;
+  --warning: #b86e00;
+  --info: #0b7fb5;
+  --demo: #8b3fd1;
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-positive: var(--positive);
+  --color-negative: var(--negative);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+  --color-demo: var(--demo);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Numbers line up in tables and KPI cards. */
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+input,
+select,
+textarea {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  padding: 0.375rem 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--text);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: 0;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+details > summary {
+  cursor: pointer;
+  list-style: none;
+}
+details > summary::-webkit-details-marker {
+  display: none;
+}
