@@ -1,5 +1,9 @@
 # Polymarket 5-Minute Crypto Trading Bot
 
+> This service lives in `services/pmbot/` of the Automated Opportunity Center
+> monorepo. Run every command below from this directory. The platform itself
+> is documented in the repository root `README.md`.
+
 An end-to-end quantitative trading system for Polymarket's 5-minute crypto
 up/down markets (BTC, ETH, SOL, XRP, DOGE and any other asset the same series
 structure appears for).
@@ -24,7 +28,7 @@ afterwards. See [What we actually measured](#what-we-actually-measured).
 
 ```bash
 git clone https://github.com/kloppelmaximilian-cpu/polymarket-bot.git
-cd polymarket-bot
+cd polymarket-bot/services/pmbot
 ./start_bot.sh            # creates a venv, installs, runs in PAPER mode
 ```
 
@@ -37,8 +41,8 @@ In a second terminal, from the same directory:
 
 That is the whole happy path. Everything below is detail.
 
-Both scripts live **in the repository**, so run them from inside it -- `cd
-polymarket-bot` first, or you get `no such file or directory`.
+Both scripts live **in this service directory**, so run them from inside it -- `cd
+polymarket-bot/services/pmbot` first, or you get `no such file or directory`.
 
 **macOS:** `python3` is Apple's 3.9, which this project does not support, and
 LightGBM's wheels need OpenMP. So:

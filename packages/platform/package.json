@@ -1,0 +1,34 @@
+{
+  "name": "@aoc/platform",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@aoc/backtest": "workspace:*",
+    "@aoc/connectors": "workspace:*",
+    "@aoc/core": "workspace:*",
+    "@aoc/database": "workspace:*",
+    "@aoc/experiments": "workspace:*",
+    "@aoc/jobs": "workspace:*",
+    "@aoc/paper-engine": "workspace:*",
+    "@aoc/research": "workspace:*",
+    "@aoc/risk": "workspace:*",
+    "@aoc/scoring": "workspace:*",
+    "@aoc/strategies": "workspace:*",
+    "@aoc/strategies-arbitrage": "workspace:*",
+    "@aoc/strategies-business": "workspace:*",
+    "@aoc/strategies-lead-generation": "workspace:*",
+    "@aoc/strategies-prediction-markets": "workspace:*",
+    "@aoc/strategies-saas": "workspace:*",
+    "@aoc/strategies-trading": "workspace:*",
+    "decimal.js": "^10.6.0",
+    "drizzle-orm": "^0.45.3",
+    "zod": "^4.6.5"
+  }
+}

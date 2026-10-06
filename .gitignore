@@ -3,22 +3,34 @@
 .env.*
 !.env.example
 
-# Data, logs, model artifacts
+# Node
+node_modules/
+.pnpm-store/
+dist/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+
+# Local data (embedded Postgres, recordings, logs)
+.data/
 data/
 logs/
 models/
 *.db
 *.db-wal
 *.db-shm
+playwright-report/
+test-results/
 
-# Python
+# Python (services/pmbot)
 __pycache__/
 *.py[cod]
 *.egg-info/
 .venv/
 venv/
 build/
-dist/
 .pytest_cache/
 .ruff_cache/
 .coverage

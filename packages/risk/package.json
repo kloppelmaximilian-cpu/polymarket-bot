@@ -1,0 +1,17 @@
+{
+  "name": "@aoc/risk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@aoc/core": "workspace:*",
+    "@aoc/paper-engine": "workspace:*",
+    "decimal.js": "^10.6.0"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "@aoc/strategies-trading",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": { "@aoc/core": "workspace:*", "@aoc/strategies": "workspace:*", "zod": "^4.6.5" }
+}

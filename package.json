@@ -1,0 +1,40 @@
+{
+  "name": "automated-opportunity-center",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Automated Opportunity Center — research, simulate, backtest and paper-test automated business and trading ideas. Paper/simulation only.",
+  "type": "module",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "dev": "node scripts/dev.mjs",
+    "dev:embedded": "node scripts/dev.mjs --embedded",
+    "dev:api": "pnpm --filter @aoc/api dev",
+    "dev:worker": "pnpm --filter @aoc/worker dev",
+    "dev:web": "pnpm --filter @aoc/web dev",
+    "db:generate": "pnpm --filter @aoc/database generate",
+    "db:migrate": "pnpm --filter @aoc/worker cli migrate",
+    "db:seed": "pnpm --filter @aoc/worker cli seed",
+    "aoc": "pnpm --filter @aoc/worker cli",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run --project unit",
+    "test:db": "vitest run --project db",
+    "test:integration": "vitest run --project integration",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "pnpm --filter @aoc/web test:e2e",
+    "typecheck": "pnpm -r --parallel typecheck",
+    "build": "pnpm -r build",
+    "check": "pnpm typecheck && pnpm test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.0",
+    "@vitest/coverage-v8": "^5.0.3",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9.3",
+    "vitest": "^5.0.3"
+  }
+}

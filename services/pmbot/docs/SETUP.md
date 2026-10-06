@@ -12,7 +12,7 @@
 
 ```bash
 git clone https://github.com/kloppelmaximilian-cpu/polymarket-bot.git
-cd polymarket-bot
+cd polymarket-bot/services/pmbot
 ```
 
 Every command below is run from inside that directory. `make` and
