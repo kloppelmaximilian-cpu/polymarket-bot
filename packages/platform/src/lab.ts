@@ -23,7 +23,7 @@ export async function runLab(ctx: PlatformContext, experimentId: string, actor: 
   if (Object.keys(m.meta.paramSpace).length === 0) throw new ValidationError('this module has no registered parameter space');
   const version = await currentVersion(ctx.db, exp);
   const base = version.params as Record<string, unknown>;
-  const seed = `${exp.id}/lab/${version.label}`;
+  const seed = `${exp.seed}/lab/${version.label}`;
   const data = await acquireData(ctx, m, base, seed);
   const capital = Number(exp.paperCapital);
   const full = m.backtest({ params: base, data: data.bundle, initialCapital: capital, seed });

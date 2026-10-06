@@ -10,6 +10,7 @@ import {
   paperAccounts,
   paperTransactions,
   pgErrorCode,
+  rowsOf,
   strategies,
   type DatabaseHandle,
 } from '../src';
@@ -34,6 +35,7 @@ async function seedExperiment() {
       slug: `exp-${Math.random().toString(36).slice(2)}`,
       strategyId: 'test.s',
       name: 'E',
+      seed: 'test-seed',
       category: 'CRYPTO_TRADING',
       kind: 'TRADING',
       description: 'd',
@@ -48,7 +50,7 @@ describe('migrations', () => {
   it('creates every table', async () => {
     const res = await h.db.execute(sql`select count(*)::int as n from information_schema.tables where table_schema = 'public'`);
     // 29 application tables + drizzle's migration journal lives in its own schema
-    expect((res.rows[0] as { n: number }).n).toBe(29);
+    expect(rowsOf<{ n: number }>(res)[0]!.n).toBe(29);
   });
   it('is idempotent', async () => {
     await h.migrate();

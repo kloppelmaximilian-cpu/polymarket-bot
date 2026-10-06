@@ -1,0 +1,23 @@
+{
+  "name": "@aoc/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --clear-screen=false src/main.ts",
+    "start": "node dist/main.js",
+    "cli": "tsx src/cli.ts",
+    "build": "tsup",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@aoc/core": "workspace:*",
+    "@aoc/database": "workspace:*",
+    "@aoc/jobs": "workspace:*",
+    "@aoc/platform": "workspace:*",
+    "drizzle-orm": "^0.45.3"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.1"
+  }
+}

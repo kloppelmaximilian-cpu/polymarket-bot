@@ -1,4 +1,4 @@
-import { NotFoundError, describeError, normalizeTitle, toDb, type IdeaOrigin } from '@aoc/core';
+import { EmergencyStopError, NotFoundError, describeError, normalizeTitle, toDb, type IdeaOrigin } from '@aoc/core';
 import { experimentSources, experiments, ideaSources, ideas, researchSources, type DbOrTx } from '@aoc/database';
 import { SEED_SOURCES, generateCatalogIdeas, generateLlmIdeas, runResearchMonitor, type IdeaDraft, type IdeaFocus, type ResearchItem } from '@aoc/research';
 import { scoreIdea } from '@aoc/scoring';
@@ -7,6 +7,7 @@ import { audit, recordEvent, type Actor } from './audit';
 import type { PlatformContext } from './context';
 import { createExperiment, transition } from './experiments';
 import { notify } from './notifications';
+import { getEmergencyStop } from './settings';
 
 export async function upsertSource(db: DbOrTx, item: ResearchItem, origin: IdeaOrigin | 'MONITOR' | 'SEED' | 'MANUAL'): Promise<{ id: string; created: boolean }> {
   const [existing] = await db.select({ id: researchSources.id }).from(researchSources).where(eq(researchSources.url, item.url));
@@ -177,6 +178,7 @@ export async function startResearch(ctx: PlatformContext, experimentId: string, 
   await ctx.db.transaction(async (tx) => {
     const [exp] = await tx.select().from(experiments).where(eq(experiments.id, experimentId)).for('update');
     if (!exp) throw new NotFoundError('experiment', experimentId);
+    if ((await getEmergencyStop(tx)).engaged) throw new EmergencyStopError('the emergency stop is engaged; release it before starting experiments');
     await transition(ctx, tx, exp, 'RESEARCHING', { actor, by: 'USER', reason: 'research started' });
   });
 }

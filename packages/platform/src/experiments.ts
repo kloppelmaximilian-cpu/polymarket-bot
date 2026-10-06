@@ -1,5 +1,7 @@
 import {
   ConflictError,
+  EmergencyStopError,
+  InvalidTransitionError,
   NotFoundError,
   ValidationError,
   defaultRiskLimits,
@@ -21,10 +23,11 @@ import { PAPER_TRADING_STATUSES, assertTransition, nextVersionLabel } from '@aoc
 import { defaultCompliance } from '@aoc/research';
 import { validateRiskLimits } from '@aoc/risk';
 import { VENUE_COSTS, type AnyStrategyModule, type DataRequirement } from '@aoc/strategies';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, ne } from 'drizzle-orm';
 import { audit, type Actor } from './audit';
 import type { PlatformContext } from './context';
 import { notify } from './notifications';
+import { getEmergencyStop } from './settings';
 
 export type ExperimentRow = typeof experiments.$inferSelect;
 export type VersionRow = typeof experimentVersions.$inferSelect;
@@ -108,6 +111,8 @@ export interface CreateExperimentInput {
   riskLimits?: Partial<RiskLimits>;
   riskLevel?: RiskLevel;
   ideaId?: string | null;
+  /** Base for every random seed of this experiment (default: derived from module and name). */
+  seed?: string;
   sourceIds?: string[];
   isDemo?: boolean;
 }
@@ -156,6 +161,8 @@ export async function createExperiment(ctx: PlatformContext, input: CreateExperi
         strategyId: meta.id,
         ideaId: input.ideaId ?? null,
         name,
+        // Same module + same name → same seed, so a fresh install reproduces the same results.
+        seed: input.seed ?? stableHash(`${meta.id}:${normalizeTitle(name)}`, 16),
         category: meta.category,
         kind: meta.kind,
         description: input.description ?? meta.description,
@@ -298,12 +305,9 @@ export async function createVersion(ctx: PlatformContext, experimentId: string, 
         status,
       })
       .returning();
-    if (status === 'ACTIVE') {
-      await tx.update(experimentVersions).set({ status: 'SUPERSEDED' }).where(and(eq(experimentVersions.experimentId, experimentId), eq(experimentVersions.status, 'ACTIVE'), eq(experimentVersions.seq, base.seq)));
-      await tx.update(experiments).set({ currentVersionId: v!.id, assumptions, updatedAt: new Date() }).where(eq(experiments.id, experimentId));
-    }
     await audit(tx, actor, 'VERSION_CREATED', { type: 'experiment_version', id: v!.id, experimentId }, { label, status, changeNote: input.changeNote });
     if (input.params) await audit(tx, actor, 'PARAMETER_CHANGED', { type: 'experiment', id: experimentId, experimentId }, { from: base.label, to: label, params: input.params });
+    if (status === 'ACTIVE') await activateVersion(ctx, tx, exp, v!, actor);
     return v!;
   });
 }
@@ -316,21 +320,31 @@ export async function promoteVersion(ctx: PlatformContext, experimentId: string,
     const [v] = await tx.select().from(experimentVersions).where(and(eq(experimentVersions.id, versionId), eq(experimentVersions.experimentId, experimentId)));
     if (!v) throw new NotFoundError('experiment version', versionId);
     if (v.status !== 'CANDIDATE') throw new ValidationError(`version ${v.label} is ${v.status}, not CANDIDATE`);
-    await tx.update(experimentVersions).set({ status: 'SUPERSEDED' }).where(and(eq(experimentVersions.experimentId, experimentId), eq(experimentVersions.status, 'ACTIVE')));
-    await tx.update(experimentVersions).set({ status: 'ACTIVE' }).where(eq(experimentVersions.id, versionId));
-    await tx.update(experiments).set({ currentVersionId: versionId, assumptions: v.assumptions, updatedAt: new Date() }).where(eq(experiments.id, experimentId));
-    // The old version's paper account belongs to the old parameters: close it.
-    await tx.update(paperAccounts).set({ status: 'CLOSED' }).where(and(eq(paperAccounts.experimentId, experimentId), eq(paperAccounts.status, 'ACTIVE')));
     await audit(tx, actor, 'PARAMETER_CHANGED', { type: 'experiment', id: experimentId, experimentId }, { promoted: v.label });
-    const status = exp.status as ExperimentStatus;
-    const target: ExperimentStatus | null = status === 'PAPER' || status === 'PROMISING' || status === 'READY_FOR_LIVE_REVIEW' ? 'EVALUATING' : status === 'PROBATION' ? 'BACKTESTING' : null;
-    if (target === 'EVALUATING') {
-      // Re-evaluate from scratch: EVALUATING re-runs gates; the pipeline sends it back through BACKTESTING by clearing the evaluation.
-      await transition(ctx, tx, exp, 'EVALUATING', { actor, reason: `version ${v.label} promoted; re-evaluating`, by: 'USER', evaluation: { needsBacktest: true } });
-    } else if (target === 'BACKTESTING') {
-      await transition(ctx, tx, exp, 'BACKTESTING', { actor, reason: `version ${v.label} promoted`, by: 'USER' });
-    }
+    await activateVersion(ctx, tx, exp, v, actor);
   });
+}
+
+/**
+ * Make `v` the experiment's ACTIVE version. Evidence gathered with the old parameters does not
+ * carry over: the old paper account is closed and an experiment that was already paper testing
+ * goes back through evaluation, which re-runs the backtest before paper testing starts again.
+ */
+async function activateVersion(ctx: PlatformContext, tx: DbOrTx, exp: ExperimentRow, v: VersionRow, actor: Actor): Promise<void> {
+  await tx.update(experimentVersions).set({ status: 'SUPERSEDED' }).where(and(eq(experimentVersions.experimentId, exp.id), eq(experimentVersions.status, 'ACTIVE'), ne(experimentVersions.id, v.id)));
+  await tx.update(experimentVersions).set({ status: 'ACTIVE' }).where(eq(experimentVersions.id, v.id));
+  await tx.update(experiments).set({ currentVersionId: v.id, assumptions: v.assumptions, updatedAt: new Date() }).where(eq(experiments.id, exp.id));
+  await tx.update(paperAccounts).set({ status: 'CLOSED' }).where(and(eq(paperAccounts.experimentId, exp.id), eq(paperAccounts.status, 'ACTIVE')));
+  const status = exp.status as ExperimentStatus;
+  if (status === 'PAPER' || status === 'PROMISING' || status === 'READY_FOR_LIVE_REVIEW' || status === 'EVALUATING') {
+    if (status !== 'EVALUATING') await transition(ctx, tx, exp, 'EVALUATING', { actor, reason: `version ${v.label} activated; re-evaluating`, by: 'USER', evaluation: { needsBacktest: true } });
+    else await tx.update(experiments).set({ evaluation: { needsBacktest: true } }).where(eq(experiments.id, exp.id));
+  } else if (status === 'PROBATION') {
+    await transition(ctx, tx, exp, 'BACKTESTING', { actor, reason: `version ${v.label} activated`, by: 'USER' });
+  } else if (status === 'PAUSED' && exp.statusBeforePause && [...PAPER_TRADING_STATUSES, 'EVALUATING'].includes(exp.statusBeforePause as ExperimentStatus)) {
+    // Resuming must not continue paper testing with evidence from the old version.
+    await tx.update(experiments).set({ statusBeforePause: 'BACKTESTING' }).where(eq(experiments.id, exp.id));
+  }
 }
 
 export async function updateRiskLimits(ctx: PlatformContext, experimentId: string, limits: Partial<RiskLimits>, actor: Actor): Promise<RiskLimits> {
@@ -367,12 +381,15 @@ export async function setStatusByUser(ctx: PlatformContext, experimentId: string
     const [exp] = await tx.select().from(experiments).where(eq(experiments.id, experimentId)).for('update');
     if (!exp) throw new NotFoundError('experiment', experimentId);
     const status = exp.status as ExperimentStatus;
+    if ((action === 'resume' || action === 'revive') && (await getEmergencyStop(tx)).engaged) {
+      throw new EmergencyStopError(`the emergency stop is engaged; release it before you ${action} experiments`);
+    }
     let to: ExperimentStatus;
     if (action === 'pause') to = 'PAUSED';
     else if (action === 'archive') to = 'ARCHIVED';
     else if (action === 'revive') to = 'RESEARCHING';
     else {
-      if (status !== 'PAUSED') throw new ValidationError(`only PAUSED experiments can be resumed (status ${status})`);
+      if (status !== 'PAUSED') throw new InvalidTransitionError(status, 'resume', 'only PAUSED experiments can be resumed');
       const prev = (exp.statusBeforePause as ExperimentStatus | null) ?? 'RESEARCHING';
       to = prev === 'PAUSED' ? 'RESEARCHING' : prev;
     }

@@ -157,6 +157,8 @@ export const experiments = pgTable(
       .references(() => strategies.id),
     ideaId: uuid('idea_id').references(() => ideas.id),
     name: text('name').notNull(),
+    /** Base of every random seed for this experiment: re-running a version reproduces its results. */
+    seed: text('seed').notNull(),
     category: text('category').notNull(),
     kind: text('kind').notNull(),
     description: text('description').notNull(),

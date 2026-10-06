@@ -194,7 +194,9 @@ export async function dashboard(ctx: PlatformContext) {
     const eqSum = rows.filter((a) => a.status === 'ACTIVE').reduce((s, a) => s + (equity.get(a.id)?.equity ?? Number(a.cash)), 0);
     const pnl = rows.reduce((s, a) => s + ((equity.get(a.id)?.equity ?? Number(a.cash)) - Number(a.startingCapital)), 0);
     const capital = rows.reduce((s, a) => s + Number(a.startingCapital), 0);
-    return { accounts: rows.length, activeAccounts: rows.filter((a) => a.status === 'ACTIVE').length, equity: eqSum, pnl, capital };
+    // No account yet means NO DATA (null), never a made-up zero.
+    const none = rows.length === 0;
+    return { accounts: rows.length, activeAccounts: rows.filter((a) => a.status === 'ACTIVE').length, equity: none ? null : eqSum, pnl: none ? null : pnl, capital };
   };
   const paper = byProv('PAPER');
   const simulated = byProv('SIMULATED');
@@ -232,7 +234,7 @@ export async function dashboard(ctx: PlatformContext) {
     paperPortfolio: { ...paper, fund: ctx.config.PAPER_TOTAL_CAPITAL_USD, allocated: activeAccounts.reduce((s, a) => s + Number(a.startingCapital), 0) },
     simulatedBusiness: simulated,
     totalSimulatedProfit: { paper: paper.pnl, simulatedOperations: simulated.pnl, note: 'PAPER = virtual money on live data; SIMULATED = business operating simulations. They are reported separately and never added together. DEMO results are excluded.' },
-    totalCapitalSimulated: paper.capital + simulated.capital,
+    totalCapitalSimulated: paper.accounts + simulated.accounts > 0 ? paper.capital + simulated.capital : null,
     bestStrategy: best((e) => e.kind !== 'BUSINESS'),
     bestBusinessModel: best((e) => e.kind === 'BUSINESS'),
     averageScore: scored.length ? scored.reduce((s, e) => s + e.score!.overall, 0) / scored.length : null,

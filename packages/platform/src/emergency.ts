@@ -1,4 +1,4 @@
-import { ValidationError, type ExperimentStatus } from '@aoc/core';
+import { ACTIVE_STATUSES, ValidationError, type ExperimentStatus } from '@aoc/core';
 import { experiments, paperAccounts, riskEvents } from '@aoc/database';
 import { PAPER_TRADING_STATUSES } from '@aoc/experiments';
 import { and, eq, inArray, like } from 'drizzle-orm';
@@ -11,11 +11,15 @@ import { SETTING_KEYS, getEmergencyStop, putSetting, type EmergencyStopState } f
 
 export const EMERGENCY_PREFIX = 'EMERGENCY STOP';
 
+/** Statuses the emergency stop pauses: everything automated, i.e. all but DISCOVERED, PAUSED, FAILED, ARCHIVED. */
+export const HALTED_STATUSES: readonly ExperimentStatus[] = [...new Set([...ACTIVE_STATUSES, ...PAPER_TRADING_STATUSES])];
+
 /**
  * EMERGENCY STOP: one switch that halts every automated experiment.
  *  - the flag is stored first, so the risk hook rejects every new paper
  *    order and the worker stops running haltable jobs immediately
- *  - every experiment in a paper-trading status is PAUSED
+ *  - every experiment the pipeline works on (research, backtest, paper,
+ *    evaluation, probation, promising, live review) is PAUSED
  *  - every open paper order is cancelled (positions stay, marked to market)
  * Releasing the stop does not resume anything by itself.
  */
@@ -25,7 +29,7 @@ export async function engageEmergencyStop(ctx: PlatformContext, reason: string, 
   await putSetting(ctx.db, SETTING_KEYS.emergencyStop, state, actor.id);
   await audit(ctx.db, actor, 'EMERGENCY_STOP_ENGAGED', { type: 'system' }, { reason });
   await ctx.db.insert(riskEvents).values({ limitName: 'emergencyStop', severity: 'CRITICAL', message: `${EMERGENCY_PREFIX}: ${reason}`, action: 'EMERGENCY_STOP' });
-  const running = await ctx.db.select().from(experiments).where(inArray(experiments.status, [...PAPER_TRADING_STATUSES]));
+  const running = await ctx.db.select().from(experiments).where(inArray(experiments.status, [...HALTED_STATUSES]));
   let paused = 0;
   for (const exp of running) {
     try {

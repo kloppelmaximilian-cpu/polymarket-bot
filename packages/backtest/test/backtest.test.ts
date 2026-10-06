@@ -1,6 +1,6 @@
 import { type Bar } from '@aoc/core';
 import { PaperAccount } from '@aoc/paper-engine';
-import { BarSeries, LookAheadError, findGaps, validateBars, type DecisionLog, type EquityPoint, type TradeRecord } from '@aoc/strategies';
+import { BarSeries, LookAheadError, findGaps, validateBars, type AnyStrategyModule, type DecisionLog, type EquityPoint, type TradeRecord } from '@aoc/strategies';
 import {
   MomentumStrategy,
   breakoutModule,
@@ -151,7 +151,7 @@ describe('bar backtest', () => {
   });
 
   it('negative control: no strategy shows a reliable edge on a driftless random walk, and costs are always charged', () => {
-    const modules = [momentumModule, meanReversionModule, breakoutModule, trendModule, volatilityModule];
+    const modules: AnyStrategyModule[] = [momentumModule, meanReversionModule, breakoutModule, trendModule, volatilityModule];
     let totalFees = 0;
     let significant = 0;
     for (const m of modules) {

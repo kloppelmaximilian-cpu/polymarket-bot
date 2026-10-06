@@ -59,7 +59,7 @@ export async function systemHealth(ctx: PlatformContext, apiStatus: ComponentHea
   out.push({
     component: 'Data Sources',
     status: enabled.length === 0 ? 'OFFLINE' : connected.length === enabled.length ? 'ONLINE' : connected.length > 0 || enabled.some((s) => s.status === 'DEGRADED' || s.status === 'STALE') ? 'DEGRADED' : 'OFFLINE',
-    detail: enabled.length === 0 ? 'market data disabled or not yet checked' : `${connected.length}/${enabled.length} connected`,
+    detail: !ctx.config.MARKET_DATA_ENABLED ? 'disabled by configuration (MARKET_DATA_ENABLED=false): finance experiments use DEMO data' : enabled.length === 0 ? 'not yet checked' : `${connected.length}/${enabled.length} connected`,
   });
 
   const research = await lastJob(ctx, 'research.monitor');
@@ -78,9 +78,12 @@ export async function systemHealth(ctx: PlatformContext, apiStatus: ComponentHea
   });
 
   const stop = await getEmergencyStop(ctx.db);
-  const system = worst(out.map((c) => c.status));
+  // The platform is OFFLINE only when a core component is; anything else degrades it.
+  const core = out.filter((c) => c.component === 'API' || c.component === 'Database' || c.component === 'Workers');
+  const system: ComponentHealth = stop.engaged || worst(out.map((c) => c.status)) !== 'ONLINE' ? (worst(core.map((c) => c.status)) === 'OFFLINE' ? 'OFFLINE' : 'DEGRADED') : 'ONLINE';
+  const notOnline = out.filter((c) => c.status !== 'ONLINE').map((c) => `${c.component} ${c.status}`);
   return {
-    components: [{ component: 'System', status: stop.engaged ? 'DEGRADED' : system, detail: stop.engaged ? `EMERGENCY STOP engaged: ${stop.reason}` : system === 'ONLINE' ? 'all components online' : 'see components' }, ...out],
+    components: [{ component: 'System', status: system, detail: stop.engaged ? `EMERGENCY STOP engaged: ${stop.reason}` : system === 'ONLINE' ? 'all components online' : notOnline.join(', ') }, ...out],
     emergencyStop: stop.engaged,
     mode: ctx.config.TRADING_MODE === 'live' ? 'LIVE REQUESTED — DISABLED (no live executor)' : 'PAPER',
   };

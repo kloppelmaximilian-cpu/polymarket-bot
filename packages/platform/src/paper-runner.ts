@@ -57,7 +57,7 @@ export async function paperTick(ctx: PlatformContext, exp: ExperimentRow, accoun
       now: ctx.clock.now(),
       live,
       state: state.module ?? {},
-      seed: `${exp.id}/${version.label}/paper`,
+      seed: `${exp.seed}/${version.label}/paper`,
       assumptions: version.assumptions as Assumption[],
       daysToSimulate: isBusiness ? ctx.config.BUSINESS_PAPER_DAYS_PER_TICK : undefined,
     });

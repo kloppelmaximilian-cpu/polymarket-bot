@@ -136,7 +136,9 @@ describe('platform end to end (embedded Postgres, no network)', () => {
     expect(dash.totals.totalExperiments).toBe(19);
     expect(dash.totals.activeExperiments).toBe(running.length + (await h.db.select().from(experiments).where(eq(experiments.status, 'PROBATION'))).length);
     expect(dash.paperPortfolio.activeAccounts).toBe(6);
-    expect(dash.simulatedBusiness.activeAccounts).toBe(running.filter((e) => e.kind === 'BUSINESS').length);
+    // A business stopped by its risk limits keeps its (frozen) account, so count accounts, not experiments.
+    const simAccounts = (await h.db.select().from(paperAccounts)).filter((a) => a.provenance === 'SIMULATED' && a.status === 'ACTIVE');
+    expect(dash.simulatedBusiness.activeAccounts).toBe(simAccounts.length);
     expect(dash.totalSimulatedProfit.note).toMatch(/never added together/);
     expect(dash.mode).toBe('PAPER');
     const detail = await experimentDetail(ctx, dash.topOpportunities[0]!.id);
@@ -145,7 +147,9 @@ describe('platform end to end (embedded Postgres, no network)', () => {
   }, 60_000);
 
   it('emergency stop pauses everything, blocks paper orders, and release does not auto-resume', async () => {
-    const running = (await h.db.select().from(experiments)).filter((e) => ['PAPER', 'PROMISING', 'PROBATION', 'READY_FOR_LIVE_REVIEW'].includes(e.status)).length;
+    const before = await h.db.select().from(experiments);
+    const running = before.filter((e) => !['DISCOVERED', 'PAUSED', 'FAILED', 'ARCHIVED'].includes(e.status)).length;
+    const pausedBefore = before.filter((e) => e.status === 'PAUSED').length;
     const res = await engageEmergencyStop(ctx, 'test drill', user);
     expect(res.paused).toBe(running);
     expect((await getEmergencyStop(h.db)).engaged).toBe(true);
@@ -158,13 +162,16 @@ describe('platform end to end (embedded Postgres, no network)', () => {
     expect(outcome.rejectReason).toMatch(/emergency stop/);
     const health = await systemHealth(ctx);
     expect(health.emergencyStop).toBe(true);
+    const [anyPaused] = await h.db.select().from(experiments).where(eq(experiments.status, 'PAUSED')).limit(1);
+    await expect(setStatusByUser(ctx, anyPaused!.id, 'resume', 'too early', user)).rejects.toThrow(/emergency stop is engaged/);
     await releaseEmergencyStop(ctx, 'drill over', user);
-    expect((await h.db.select().from(experiments).where(eq(experiments.status, 'PAUSED'))).length).toBe(running);
-    // Resume one by hand.
-    const [paused] = await h.db.select().from(experiments).where(eq(experiments.status, 'PAUSED')).limit(1);
-    const resumed = await setStatusByUser(ctx, paused!.id, 'resume', 'checked', user);
-    expect(resumed.status).toBe('PAPER');
-    for (const e of await h.db.select().from(experiments).where(eq(experiments.status, 'PAUSED'))) await setStatusByUser(ctx, e.id, 'resume', 'checked', user);
+    expect((await h.db.select().from(experiments).where(eq(experiments.status, 'PAUSED'))).length).toBe(running + pausedBefore);
+    // Resume by hand what the drill paused (not what a risk limit stopped before).
+    const drill = (await h.db.select().from(experiments).where(eq(experiments.status, 'PAUSED'))).filter((e) => e.statusReason?.includes('test drill'));
+    expect(drill).toHaveLength(running);
+    const resumed = await setStatusByUser(ctx, drill[0]!.id, 'resume', 'checked', user);
+    expect(resumed.status).toBe(drill[0]!.statusBeforePause);
+    for (const e of drill.slice(1)) await setStatusByUser(ctx, e.id, 'resume', 'checked', user);
   }, 120_000);
 
   it('stops an experiment when a risk limit is breached', async () => {

@@ -64,7 +64,7 @@ export async function createDatabase(url: string, opts: CreateDatabaseOptions = 
       db,
       kind: 'postgres',
       url,
-      migrate: () => migratePg(drizzlePg({ client: pool, schema }), { migrationsFolder: migrationsDir() }),
+      migrate: () => migrateWithLock(url),
       ping: () => ping(db),
       close: () => pool.end(),
     };
@@ -93,15 +93,66 @@ export async function createDatabase(url: string, opts: CreateDatabaseOptions = 
   throw new Error(`Unsupported DATABASE_URL scheme: ${url.split(':')[0]}`);
 }
 
+/** Arbitrary constant key for the migration advisory lock. */
+const MIGRATION_LOCK_KEY = 72_625_241;
+
+/**
+ * Run migrations on a dedicated connection holding a session advisory lock,
+ * so an API and a worker starting at the same time cannot migrate twice.
+ */
+async function migrateWithLock(url: string): Promise<void> {
+  const client = new pg.Client({ connectionString: url });
+  await client.connect();
+  try {
+    await client.query('SELECT pg_advisory_lock($1)', [MIGRATION_LOCK_KEY]);
+    await migratePg(drizzlePg({ client, schema }), { migrationsFolder: migrationsDir() });
+  } finally {
+    await client.query('SELECT pg_advisory_unlock($1)', [MIGRATION_LOCK_KEY]).catch(() => undefined);
+    await client.end();
+  }
+}
+
 async function ping(db: Database): Promise<number> {
   const started = performance.now();
   await db.execute(sql`select 1`);
   return Math.round(performance.now() - started);
 }
 
-/** Convenience for tests: an in-memory, fully migrated database. */
+/**
+ * A fresh, fully migrated database for one test file. With TEST_DATABASE_URL
+ * set (postgres://…) every call creates its own throwaway database on that
+ * server and drops it on close; otherwise it is an in-memory PGlite.
+ */
 export async function createTestDatabase(): Promise<DatabaseHandle> {
-  const handle = await createDatabase('memory://');
+  const admin = process.env.TEST_DATABASE_URL;
+  if (!admin || !/^postgres(ql)?:\/\//.test(admin)) {
+    const handle = await createDatabase('memory://');
+    await handle.migrate();
+    return handle;
+  }
+  const name = `aoc_test_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  const adminClient = new pg.Client({ connectionString: admin });
+  await adminClient.connect();
+  try {
+    await adminClient.query(`CREATE DATABASE ${name}`);
+  } finally {
+    await adminClient.end();
+  }
+  const url = new URL(admin);
+  url.pathname = `/${name}`;
+  const handle = await createDatabase(url.toString(), { maxConnections: 5 });
   await handle.migrate();
-  return handle;
+  return {
+    ...handle,
+    close: async () => {
+      await handle.close();
+      const c = new pg.Client({ connectionString: admin });
+      await c.connect();
+      try {
+        await c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
+      } finally {
+        await c.end();
+      }
+    },
+  };
 }

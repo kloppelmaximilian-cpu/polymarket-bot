@@ -1,12 +1,12 @@
 import { Rng, mean } from '@aoc/core';
 import { PaperAccount, verifyLedger, type TransactionState } from '@aoc/paper-engine';
-import { assumption, modeValues, sampleAssumption, validateAssumptions } from '@aoc/strategies';
+import { assumption, modeValues, sampleAssumption, validateAssumptions, type AnyStrategyModule } from '@aoc/strategies';
 import { aiLeadGenModule, AiLeadGenModel } from '@aoc/strategies-lead-generation';
 import { aiSaasModule, AiSaasModel } from '@aoc/strategies-saas';
 import { describe, expect, it } from 'vitest';
 import { DigitalProductsModel, businessModules, digitalProductsModule, salesAgentModule, supportAgentModule } from '../src';
 
-const all = [aiSaasModule, aiLeadGenModule, ...businessModules];
+const all: AnyStrategyModule[] = [aiSaasModule, aiLeadGenModule, ...businessModules];
 
 describe('assumptions', () => {
   it('samples within range and respects fixed values', () => {
@@ -61,7 +61,7 @@ describe('funnel arithmetic', () => {
 });
 
 describe('Monte Carlo evaluation', () => {
-  const input = (seed: string) => ({ params: {}, assumptions: [], runs: 300, horizonMonths: 24, seed, startingCapital: 1000 });
+  const input = (seed: string, m: AnyStrategyModule = aiSaasModule) => ({ params: m.meta.defaultParams, assumptions: [], runs: 300, horizonMonths: 24, seed, startingCapital: 1000 });
 
   it('is reproducible and labelled ESTIMATED', () => {
     const a = aiSaasModule.simulate!(input('s1'));
@@ -74,7 +74,7 @@ describe('Monte Carlo evaluation', () => {
 
   it('produces consistent percentiles, sorted sensitivity and a harsher stress case', () => {
     for (const m of all) {
-      const r = m.simulate!(input('x'));
+      const r = m.simulate!(input('x', m));
       const s = r.summary;
       expect(s.cumulativeProfit.p10, m.meta.id).toBeLessThanOrEqual(s.cumulativeProfit.p50);
       expect(s.cumulativeProfit.p50).toBeLessThanOrEqual(s.cumulativeProfit.p90);
@@ -89,7 +89,7 @@ describe('Monte Carlo evaluation', () => {
 
 describe('paper operation', () => {
   it('advances simulated days into the paper ledger, consistently and reproducibly', () => {
-    for (const m of [supportAgentModule, salesAgentModule, digitalProductsModule, aiSaasModule, aiLeadGenModule]) {
+    for (const m of [supportAgentModule, salesAgentModule, digitalProductsModule, aiSaasModule, aiLeadGenModule] as AnyStrategyModule[]) {
       const run = () => {
         const { account, changes } = PaperAccount.open({ startingCapital: 1000, ts: new Date('2026-01-01T00:00:00Z') });
         const ledger: TransactionState[] = [...changes.transactions];

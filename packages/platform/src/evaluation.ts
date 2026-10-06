@@ -120,7 +120,7 @@ export interface BusinessSuiteResult {
 export async function runEvaluationSuite(ctx: PlatformContext, exp: ExperimentRow, version: VersionRow, opts: { trials?: number; trialSharpeVariance?: number; keepAlive?: () => Promise<void> } = {}): Promise<FinanceSuiteResult | BusinessSuiteResult> {
   const m: AnyStrategyModule = ctx.registry.get(exp.strategyId);
   const params = version.params as Record<string, unknown>;
-  const seed = `${exp.id}/${version.label}`;
+  const seed = `${exp.seed}/${version.label}`;
   const capital = Number(exp.paperCapital);
   const startedAt = new Date();
 

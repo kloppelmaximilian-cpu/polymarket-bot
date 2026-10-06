@@ -15,6 +15,13 @@
       "when": 1791322683474,
       "tag": "0001_guards",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791325609988,
+      "tag": "0002_experiment_seed",
+      "breakpoints": true
     }
   ]
 }
