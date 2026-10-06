@@ -8,6 +8,7 @@ import { JobQueue, Scheduler, Worker } from '@aoc/jobs';
 import { recordError, recordEvent } from './audit';
 import { createContext, type PlatformContext } from './context';
 import { syncStrategies } from './experiments';
+import { seed } from './seed';
 import { buildJobs, buildSchedule } from './jobs';
 import { getEmergencyStop } from './settings';
 
@@ -101,6 +102,10 @@ export async function startBackground(rt: Pick<Runtime, 'ctx' | 'queue' | 'strea
   const { ctx, queue, config, logger } = rt;
   const synced = await syncStrategies(ctx);
   logger.info({ modules: synced }, 'strategy modules synced');
+  if (config.SEED_ON_START) {
+    const r = await seed(ctx);
+    logger.info({ created: r.created.length }, 'starter experiments seeded (SEED_ON_START)');
+  }
   rt.streams?.start();
 
   const worker = new Worker(queue, buildJobs(ctx), {

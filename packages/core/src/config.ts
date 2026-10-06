@@ -67,6 +67,8 @@ export const configSchema = z.object({
   API_PORT: num(4000, { min: 1, max: 65535, int: true }),
   API_TOKEN: optionalString,
   API_RATE_LIMIT_PER_MINUTE: num(600, { min: 10, int: true }),
+  /** Trust X-Forwarded-For (only behind your own reverse proxy). */
+  API_TRUST_PROXY: bool(false),
   WEB_ORIGIN: z.string().default('http://localhost:3000'),
 
   // ---- Safety: live trading is off unless every one of these is set. ----
@@ -98,6 +100,8 @@ export const configSchema = z.object({
 
   // ---- Workers ----
   SCHEDULER_ENABLED: bool(true),
+  /** Create the starter experiments on worker start (idempotent; used by docker compose). */
+  SEED_ON_START: bool(false),
   EMBEDDED_WORKER: bool(false),
   WORKER_CONCURRENCY: num(2, { min: 1, max: 16, int: true }),
   WORKER_POLL_MS: num(1_000, { min: 100, int: true }),

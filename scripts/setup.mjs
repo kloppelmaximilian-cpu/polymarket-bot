@@ -2,12 +2,12 @@
 // One-time setup: checks prerequisites, writes .env (with a fresh API token),
 // installs dependencies, migrates and seeds the database.
 //
-//   pnpm setup               PostgreSQL from DATABASE_URL (docker compose up -d postgres)
-//   pnpm setup --embedded    embedded Postgres (PGlite) in .data/pglite, no Docker needed
-//   pnpm setup --no-seed     skip creating the starter experiments
+//   pnpm run setup               PostgreSQL from DATABASE_URL (docker compose up -d postgres)
+//   pnpm run setup --embedded    embedded Postgres (PGlite) in .data/pglite, no Docker needed
+//   pnpm run setup --no-seed     skip creating the starter experiments
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { Socket } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -40,7 +40,8 @@ if (!existsSync(envPath)) {
   let env = readFileSync(envPath, 'utf8');
   env = env.replace(/^API_TOKEN=.*$/m, `API_TOKEN=${randomBytes(24).toString('base64url')}`);
   if (embedded) env = env.replace(/^DATABASE_URL=.*$/m, 'DATABASE_URL=pglite://.data/pglite');
-  writeFileSync(envPath, env, { mode: 0o600 });
+  writeFileSync(envPath, env);
+  chmodSync(envPath, 0o600); // holds the API token: owner-only
   console.log(`  created .env with a random API_TOKEN${embedded ? ' and the embedded database' : ''}`);
 } else {
   console.log('  .env exists — left unchanged');
@@ -65,7 +66,7 @@ if (dbUrl.startsWith('postgres')) {
   if (!reachable) {
     fail(`PostgreSQL is not reachable at ${hostname}:${port || 5432}.
   Start it with:   docker compose up -d postgres
-  or use the embedded database instead:   pnpm setup --embedded   (or set DATABASE_URL=pglite://.data/pglite in .env)`);
+  or use the embedded database instead:   pnpm run setup --embedded   (or set DATABASE_URL=pglite://.data/pglite in .env)`);
   }
   console.log(`  reachable at ${hostname}:${port || 5432}`);
 }

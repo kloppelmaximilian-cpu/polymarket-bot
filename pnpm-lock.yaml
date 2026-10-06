@@ -26,30 +26,12 @@ importers:
 
   apps/api:
     dependencies:
-      '@aoc/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@aoc/database':
-        specifier: workspace:*
-        version: link:../../packages/database
-      '@aoc/experiments':
-        specifier: workspace:*
-        version: link:../../packages/experiments
-      '@aoc/jobs':
-        specifier: workspace:*
-        version: link:../../packages/jobs
-      '@aoc/platform':
-        specifier: workspace:*
-        version: link:../../packages/platform
-      '@aoc/research':
-        specifier: workspace:*
-        version: link:../../packages/research
-      '@aoc/risk':
-        specifier: workspace:*
-        version: link:../../packages/risk
-      '@aoc/scoring':
-        specifier: workspace:*
-        version: link:../../packages/scoring
+      '@anthropic-ai/sdk':
+        specifier: ^0.131.0
+        version: 0.131.0(zod@4.6.5)
+      '@electric-sql/pglite':
+        specifier: ^0.5.8
+        version: 0.5.8
       '@fastify/cors':
         specifier: ^11.3.0
         version: 11.3.0
@@ -74,10 +56,43 @@ importers:
       fastify-type-provider-zod:
         specifier: ^7.0.0
         version: 7.0.0(@fastify/swagger@9.9.1)(fastify@5.12.5)(openapi-types@12.1.3)(zod@4.6.5)
+      pg:
+        specifier: ^8.23.1
+        version: 8.23.1
+      pino:
+        specifier: ^10.4.0
+        version: 10.4.0
+      ws:
+        specifier: ^8.22.0
+        version: 8.22.0
       zod:
         specifier: ^4.6.5
         version: 4.6.5
     devDependencies:
+      '@aoc/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@aoc/database':
+        specifier: workspace:*
+        version: link:../../packages/database
+      '@aoc/experiments':
+        specifier: workspace:*
+        version: link:../../packages/experiments
+      '@aoc/jobs':
+        specifier: workspace:*
+        version: link:../../packages/jobs
+      '@aoc/platform':
+        specifier: workspace:*
+        version: link:../../packages/platform
+      '@aoc/research':
+        specifier: workspace:*
+        version: link:../../packages/research
+      '@aoc/risk':
+        specifier: workspace:*
+        version: link:../../packages/risk
+      '@aoc/scoring':
+        specifier: workspace:*
+        version: link:../../packages/scoring
       openapi-types:
         specifier: ^12.1.3
         version: 12.1.3
@@ -139,6 +154,25 @@ importers:
 
   apps/worker:
     dependencies:
+      '@anthropic-ai/sdk':
+        specifier: ^0.131.0
+        version: 0.131.0(zod@4.6.5)
+      '@electric-sql/pglite':
+        specifier: ^0.5.8
+        version: 0.5.8
+      drizzle-orm:
+        specifier: ^0.45.3
+        version: 0.45.3(@electric-sql/pglite@0.5.8)(@types/pg@8.23.1)(pg@8.23.1)
+      pg:
+        specifier: ^8.23.1
+        version: 8.23.1
+      pino:
+        specifier: ^10.4.0
+        version: 10.4.0
+      ws:
+        specifier: ^8.22.0
+        version: 8.22.0
+    devDependencies:
       '@aoc/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -151,10 +185,6 @@ importers:
       '@aoc/platform':
         specifier: workspace:*
         version: link:../../packages/platform
-      drizzle-orm:
-        specifier: ^0.45.3
-        version: 0.45.3(@electric-sql/pglite@0.5.8)(@types/pg@8.23.1)(pg@8.23.1)
-    devDependencies:
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(jiti@2.7.0)(postcss@8.5.29)(tsx@4.23.15)(typescript@5.9.3)(yaml@2.9.1)
@@ -173,10 +203,6 @@ importers:
       '@aoc/strategies':
         specifier: workspace:*
         version: link:../strategies
-    devDependencies:
-      '@aoc/strategies-trading':
-        specifier: workspace:*
-        version: link:../../strategies/trading
 
   packages/connectors:
     dependencies:

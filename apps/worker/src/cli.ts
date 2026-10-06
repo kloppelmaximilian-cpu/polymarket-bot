@@ -146,6 +146,12 @@ const commands: Record<string, Cmd> = {
   },
 };
 
+// `pnpm aoc experiments | head` closes stdout early: that is not an error.
+process.stdout.on('error', (e: NodeJS.ErrnoException) => {
+  if (e.code === 'EPIPE') process.exit(0);
+  throw e;
+});
+
 async function main(): Promise<void> {
   const { positionals, values } = parseArgs({
     allowPositionals: true,

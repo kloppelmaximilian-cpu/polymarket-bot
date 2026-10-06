@@ -1,6 +1,11 @@
+import { cpSync } from 'node:fs';
 import { defineConfig } from 'tsup';
 
-/** Bundle the worker, the CLI and every workspace package into self-contained files for production images. */
+/**
+ * Production bundle: the workspace packages (@aoc/*) are compiled in; the
+ * third-party runtime dependencies stay external (listed in package.json, so
+ * `pnpm deploy --prod` installs them). The SQL migrations ship inside dist/.
+ */
 export default defineConfig({
   entry: ['src/main.ts', 'src/cli.ts'],
   format: ['esm'],
@@ -10,6 +15,9 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   noExternal: [/^@aoc\//],
-  external: ['@electric-sql/pglite', 'pg', 'pino', 'pino-pretty', 'ws', '@anthropic-ai/sdk'],
+  external: ['pino-pretty'],
   banner: { js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" },
+  onSuccess: async () => {
+    cpSync('../../packages/database/migrations', 'dist/migrations', { recursive: true });
+  },
 });

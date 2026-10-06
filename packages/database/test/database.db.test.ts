@@ -1,7 +1,11 @@
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   auditLogs,
+  createDatabase,
   createTestDatabase,
   experimentVersions,
   experiments,
@@ -133,4 +137,26 @@ describe('guards', () => {
     await h.db.insert(jobRuns).values({ name: 'j' });
     await h.db.insert(jobRuns).values({ name: 'j' });
   });
+});
+
+describe('embedded database lock', () => {
+  const dir = join(mkdtempSync(join(tmpdir(), 'aoc-lock-')), 'db');
+
+  it('refuses a second opener of the same directory and releases on close', async () => {
+    const first = await createDatabase(`pglite://${dir}`);
+    // Pretend another live process holds it: our parent process is alive and is not us.
+    writeFileSync(`${dir}.lock`, String(process.ppid));
+    await expect(createDatabase(`pglite://${dir}`)).rejects.toThrow(/in use by process/);
+    writeFileSync(`${dir}.lock`, String(process.pid));
+    await first.close();
+    expect(existsSync(`${dir}.lock`)).toBe(false);
+  }, 60_000);
+
+  it('takes over a stale lock left by a process that is gone', async () => {
+    writeFileSync(`${dir}.lock`, '999999999');
+    const h2 = await createDatabase(`pglite://${dir}`);
+    expect(readFileSync(`${dir}.lock`, 'utf8')).toBe(String(process.pid));
+    await h2.close();
+    expect(existsSync(`${dir}.lock`)).toBe(false);
+  }, 60_000);
 });

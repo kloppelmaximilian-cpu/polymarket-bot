@@ -64,3 +64,22 @@ test('emergency stop asks for a reason before it acts', async ({ page }) => {
   await dialog.getByRole('button', { name: 'Cancel' }).click();
   await expect(dialog).toBeHidden();
 });
+
+// Changes state (pauses every automated experiment): only against a throwaway stack.
+test('engages and releases the emergency stop end to end (E2E_MUTATE=1)', async ({ page }) => {
+  test.skip(process.env.E2E_MUTATE !== '1', 'set E2E_MUTATE=1 to run state-changing tests');
+  await page.goto('/');
+  await page.getByRole('button', { name: /^emergency stop$/i }).click();
+  await page.getByRole('dialog').getByPlaceholder(/reason/i).fill('e2e drill');
+  await page.getByRole('dialog').getByRole('button', { name: 'Stop everything' }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'EMERGENCY STOP ENGAGED' })).toBeVisible();
+  await page.goto('/risk');
+  await expect(page.getByText('ENGAGED', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: /stop engaged/i }).click();
+  await page.getByRole('dialog').getByPlaceholder(/safe to continue/i).fill('e2e drill over');
+  await page.getByRole('dialog').getByLabel(/resume the experiments/i).check();
+  await page.getByRole('dialog').getByRole('button', { name: 'Release' }).click();
+  await expect(page.getByRole('button', { name: /^emergency stop$/i })).toBeVisible();
+  await page.goto('/logs?kind=audit&action=EMERGENCY_STOP_RELEASED');
+  await expect(page.getByText('EMERGENCY_STOP_RELEASED').first()).toBeVisible();
+});

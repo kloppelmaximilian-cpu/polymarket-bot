@@ -54,7 +54,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     loggerInstance: deps.logger === false ? undefined : (ctx.logger as never),
     genReqId: () => crypto.randomUUID(),
     bodyLimit: 1_000_000,
-    trustProxy: true,
+    // Not behind a proxy by default: trusting X-Forwarded-For would let clients spoof their IP
+    // (and the rate-limit allow-list). Enable only behind a reverse proxy you control.
+    trustProxy: ctx.config.API_TRUST_PROXY,
   }).withTypeProvider<ZodTypeProvider>();
 
   app.setValidatorCompiler(validatorCompiler);

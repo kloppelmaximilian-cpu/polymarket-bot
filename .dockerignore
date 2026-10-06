@@ -1,0 +1,17 @@
+# Keep the build context small and free of secrets.
+.git
+**/node_modules
+**/.next
+**/dist
+**/.turbo
+**/coverage
+**/test-results
+**/playwright-report
+.data
+data
+logs
+.env
+.env.*
+!.env.example
+services/pmbot
+*.log

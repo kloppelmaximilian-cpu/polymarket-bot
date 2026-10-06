@@ -1,5 +1,5 @@
-import { mkdirSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { sql } from 'drizzle-orm';
@@ -26,10 +26,15 @@ export interface DatabaseHandle {
   close(): Promise<void>;
 }
 
+/**
+ * Where the SQL migrations are: MIGRATIONS_DIR, else next to a production
+ * bundle (dist/migrations), else the package's own migrations folder.
+ */
 export function migrationsDir(): string {
   if (process.env.MIGRATIONS_DIR) return resolve(process.env.MIGRATIONS_DIR);
   const here = dirname(fileURLToPath(import.meta.url));
-  return resolve(here, '..', 'migrations');
+  const candidates = [resolve(here, 'migrations'), resolve(here, '..', 'migrations')];
+  return candidates.find((c) => existsSync(join(c, 'meta', '_journal.json'))) ?? candidates[1]!;
 }
 
 export interface CreateDatabaseOptions {
@@ -71,14 +76,21 @@ export async function createDatabase(url: string, opts: CreateDatabaseOptions = 
   }
   if (url.startsWith('pglite://') || url.startsWith('memory://')) {
     let client: PGlite;
+    let release = () => {};
     if (url.startsWith('memory://')) {
       client = new PGlite();
     } else {
       const dir = resolve(url.slice('pglite://'.length) || '.data/pglite');
       mkdirSync(dir, { recursive: true });
+      release = lockEmbeddedDir(dir);
       client = new PGlite(dir);
     }
-    await client.waitReady;
+    try {
+      await client.waitReady;
+    } catch (e) {
+      release();
+      throw e;
+    }
     const pdb = drizzlePglite({ client, schema });
     const db = pdb as unknown as Database;
     return {
@@ -87,10 +99,61 @@ export async function createDatabase(url: string, opts: CreateDatabaseOptions = 
       url,
       migrate: () => migratePglite(pdb, { migrationsFolder: migrationsDir() }),
       ping: () => ping(db),
-      close: () => client.close(),
+      close: async () => {
+        await client.close();
+        release();
+      },
     };
   }
   throw new Error(`Unsupported DATABASE_URL scheme: ${url.split(':')[0]}`);
+}
+
+/**
+ * PGlite is single-process: a second process opening the same directory can
+ * corrupt it. A lock file next to the directory (pid inside) refuses that
+ * with a clear message; a lock left by a process that no longer runs is taken over.
+ */
+function lockEmbeddedDir(dir: string): () => void {
+  const file = `${dir}.lock`;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const fd = openSync(file, 'wx');
+      writeSync(fd, String(process.pid));
+      closeSync(fd);
+      let released = false;
+      const release = () => {
+        if (released) return;
+        released = true;
+        try {
+          if (readFileSync(file, 'utf8').trim() === String(process.pid)) unlinkSync(file);
+        } catch {
+          /* already gone */
+        }
+      };
+      process.once('exit', release);
+      return release;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+      const pid = Number(readFileSync(file, 'utf8').trim());
+      if (Number.isInteger(pid) && pid > 0 && pid !== process.pid && processAlive(pid)) {
+        throw new Error(
+          `The embedded database ${dir} is in use by process ${pid}. PGlite allows one process at a time: stop that process first ` +
+            '(in embedded mode the worker runs inside the API), use the API instead, or switch to PostgreSQL.',
+        );
+      }
+      unlinkSync(file); // stale lock from a process that is gone
+    }
+  }
+  throw new Error(`could not lock the embedded database ${dir}`);
+}
+
+function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === 'EPERM';
+  }
 }
 
 /** Arbitrary constant key for the migration advisory lock. */

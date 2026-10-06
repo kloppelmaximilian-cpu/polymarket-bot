@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  platform:
+    name: Typecheck, tests, builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: aoc
+          POSTGRES_PASSWORD: aoc
+          POSTGRES_DB: aoc
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U aoc" --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - name: Tests (embedded Postgres)
+        run: pnpm test
+      - name: Database and integration tests (PostgreSQL 16)
+        env:
+          TEST_DATABASE_URL: postgres://aoc:aoc@127.0.0.1:5432/postgres
+        run: pnpm test:db && pnpm test:integration
+      - name: Build API, worker and dashboard
+        run: pnpm build
+
+  pmbot:
+    name: Python bot (services/pmbot)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: services/pmbot
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -e '.[dev]'
+      - run: python -m pytest -q

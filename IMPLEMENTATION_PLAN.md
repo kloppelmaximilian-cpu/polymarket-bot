@@ -163,10 +163,12 @@ Kontextfaktoren: Recurring Revenue, Competition, Dependency Risk, Data
 Availability, Execution Risk, Operational Complexity.
 
 * Gewichteter Mittelwert der vorhandenen Scores.
-* **Nicht-kompensatorische Risikostrafe:** `score × (0.4 + 0.6 · risk/100)`;
-  zusätzlich Deckel bei negativer Erwartung (≤ 25) und bei FAILED (≤ 15).
+* **Nicht-kompensatorische Risikostrafe:** `score × (0.5 + 0.5 · risk/100)`;
+  Deckel: EXTREME-Risiko ≤ 40, negative Erwartung ≤ 25, FAILED ≤ 15.
 * **Fehlende Daten werden nicht erfunden:** Profit ohne Ergebnisse = `NO DATA`,
-  der Gesamtscore ist dann auf 60 gedeckelt und als `LOW confidence` markiert.
+  der Gesamtscore ist dann auf 60 gedeckelt und als `LOW confidence` markiert;
+  ungetestete Experimente (HYPOTHETICAL) ≤ 50; Business-Schätzungen mit
+  < 50 % belegten Annahmen ≤ 60 und `LOW`. Details: `docs/SCORING.md`.
 * Konfidenz nach Evidenzstufe: HYPOTHETICAL < ESTIMATED < SIMULATED <
   HISTORICAL < PAPER.
 
@@ -297,3 +299,11 @@ Resolution/Near-Certainty, sowie der bestehende `pmbot` als externes Experiment.
 | D6 | Embedded-Modus (PGlite) mit In-Process-Worker | `pnpm dev:embedded` startet ohne Docker/Postgres |
 | D7 | Business-„Paper“ = tägliche agentenbasierte Betriebssimulation im Paper-Ledger | Einheitliche P&L-Darstellung über alle Kategorien |
 | D8 | Kein Live-Executor implementiert | Sicherheit hat Priorität 1 |
+| D9 | Eigener Budget-Topf für simulierte Geschäftsbetriebe (`BUSINESS_SIM_BUDGET_USD`); Budget ≈ P70 des geschätzten Cash-Bedarfs | Ein fixes Budget ließ Geschäftsmodelle an zu wenig virtuellem Geld scheitern statt an ihrer Ökonomie; Trading-Fonds bleibt unberührt |
+| D10 | Webhook-Benachrichtigungen per Job `notifications.deliver` statt in der Transaktion | Keine Benachrichtigung für zurückgerollte Statuswechsel; kein Deadlock auf PGlite |
+| D11 | Gespeicherter, deterministischer Seed je Experiment (Migration `0002`) | Seeds aus Zufalls-IDs machten Ergebnisse (und Tests) nicht reproduzierbar |
+| D12 | Emergency Stop pausiert alle automatisierten Status und sperrt Start/Resume bis zur Freigabe | Ein Not-Aus muss alles Automatische anhalten, nicht nur den Paper-Handel |
+| D13 | Dashboard serverseitig gerendert, Mutationen als Server Actions mit erneuter Auth-Prüfung, Typen aus den Platform-Queries abgeleitet | Token verlässt nie den Server; UI kann nicht von der API abdriften |
+| D14 | Kein ROI für Business-Schätzungen; ungetestete Experimente ≤ 50 Punkte | Gewinn / Cash-Puffer ergab irreführende Prozentwerte; Ungetestetes darf Getestetes nicht überholen |
+| D15 | Produktion: tsup-Bundles (inkl. SQL-Migrationen) + `pnpm deploy --prod`; Next.js standalone | Kleine, selbstständige Images ohne Workspace-Quellen |
+| D16 | Optionales Proxy-CA im Docker-Build nur als BuildKit-Secret | Builds hinter TLS-abfangenden Proxys, ohne Secrets im Image |

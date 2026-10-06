@@ -15,7 +15,7 @@ const embedded = args.has('--embedded');
 
 const envPath = join(root, '.env');
 if (existsSync(envPath)) process.loadEnvFile(envPath);
-else console.warn('No .env found — run `pnpm setup` first (continuing with defaults).');
+else console.warn('No .env found — run `pnpm run setup` first (continuing with defaults).');
 
 const env = { ...process.env, FORCE_COLOR: '1' };
 if (embedded) {
@@ -24,7 +24,7 @@ if (embedded) {
   env.DATABASE_URL = `pglite://${resolve(root, path)}`;
   env.EMBEDDED_WORKER = 'true';
 } else if (!env.DATABASE_URL) {
-  console.error('DATABASE_URL is not set. Run `pnpm setup` (PostgreSQL) or `pnpm dev:embedded` (no Docker).');
+  console.error('DATABASE_URL is not set. Run `pnpm run setup` (PostgreSQL) or `pnpm dev:embedded` (no Docker).');
   process.exit(1);
 } else if (env.DATABASE_URL.startsWith('pglite://')) {
   console.log('DATABASE_URL points at the embedded database: switching to embedded mode (worker inside the API).');

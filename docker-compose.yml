@@ -1,0 +1,73 @@
+# Automated Opportunity Center — PostgreSQL, API, worker and dashboard.
+#   cp .env.example .env   (or: pnpm run setup)   then set API_TOKEN
+#   docker compose up -d --build
+#   open http://localhost:3000
+# Every port is bound to 127.0.0.1. Paper / simulation only.
+name: aoc
+
+x-app-env: &app-env
+  NODE_ENV: production
+  DATABASE_URL: postgres://${POSTGRES_USER:-aoc}:${POSTGRES_PASSWORD:-aoc}@postgres:5432/${POSTGRES_DB:-aoc}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-aoc}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aoc}
+      POSTGRES_DB: ${POSTGRES_DB:-aoc}
+    ports:
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build: { context: ., target: api }
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      <<: *app-env
+      API_HOST: 0.0.0.0
+      API_PORT: 4000
+      EMBEDDED_WORKER: 'false'
+    ports:
+      - '127.0.0.1:${API_PORT:-4000}:4000'
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  worker:
+    build: { context: ., target: worker }
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      <<: *app-env
+      SEED_ON_START: 'true'
+    depends_on:
+      api: { condition: service_healthy }
+
+  web:
+    build: { context: ., target: web }
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NODE_ENV: production
+      API_URL: http://api:4000
+    ports:
+      - '127.0.0.1:${WEB_PORT:-3000}:3000'
+    depends_on:
+      api: { condition: service_healthy }
+
+volumes:
+  pgdata:

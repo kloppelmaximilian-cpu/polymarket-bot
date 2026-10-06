@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "tsx watch --clear-screen=false src/main.ts",
     "start": "node dist/main.js",
@@ -11,13 +14,18 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
+    "@electric-sql/pglite": "^0.5.8",
+    "drizzle-orm": "^0.45.3",
+    "pg": "^8.23.1",
+    "pino": "^10.4.0",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
     "@aoc/core": "workspace:*",
     "@aoc/database": "workspace:*",
     "@aoc/jobs": "workspace:*",
     "@aoc/platform": "workspace:*",
-    "drizzle-orm": "^0.45.3"
-  },
-  "devDependencies": {
     "tsup": "^8.5.1"
   }
 }
