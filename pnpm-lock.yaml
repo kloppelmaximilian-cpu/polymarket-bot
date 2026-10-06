@@ -32,9 +32,16 @@ importers:
       '@aoc/paper-engine':
         specifier: workspace:*
         version: link:../paper-engine
+      '@aoc/risk':
+        specifier: workspace:*
+        version: link:../risk
       '@aoc/strategies':
         specifier: workspace:*
         version: link:../strategies
+    devDependencies:
+      '@aoc/strategies-trading':
+        specifier: workspace:*
+        version: link:../../strategies/trading
 
   packages/connectors:
     dependencies:
@@ -222,9 +229,18 @@ importers:
 
   strategies/arbitrage:
     dependencies:
+      '@aoc/backtest':
+        specifier: workspace:*
+        version: link:../../packages/backtest
       '@aoc/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@aoc/paper-engine':
+        specifier: workspace:*
+        version: link:../../packages/paper-engine
+      '@aoc/risk':
+        specifier: workspace:*
+        version: link:../../packages/risk
       '@aoc/strategies':
         specifier: workspace:*
         version: link:../../packages/strategies
@@ -243,6 +259,16 @@ importers:
       zod:
         specifier: ^4.6.5
         version: 4.6.5
+    devDependencies:
+      '@aoc/paper-engine':
+        specifier: workspace:*
+        version: link:../../packages/paper-engine
+      '@aoc/strategies-lead-generation':
+        specifier: workspace:*
+        version: link:../lead-generation
+      '@aoc/strategies-saas':
+        specifier: workspace:*
+        version: link:../saas
 
   strategies/lead-generation:
     dependencies:
@@ -252,18 +278,24 @@ importers:
       '@aoc/strategies':
         specifier: workspace:*
         version: link:../../packages/strategies
-      '@aoc/strategies-business':
-        specifier: workspace:*
-        version: link:../business
       zod:
         specifier: ^4.6.5
         version: 4.6.5
 
   strategies/prediction-markets:
     dependencies:
+      '@aoc/backtest':
+        specifier: workspace:*
+        version: link:../../packages/backtest
       '@aoc/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@aoc/paper-engine':
+        specifier: workspace:*
+        version: link:../../packages/paper-engine
+      '@aoc/risk':
+        specifier: workspace:*
+        version: link:../../packages/risk
       '@aoc/strategies':
         specifier: workspace:*
         version: link:../../packages/strategies
@@ -279,18 +311,21 @@ importers:
       '@aoc/strategies':
         specifier: workspace:*
         version: link:../../packages/strategies
-      '@aoc/strategies-business':
-        specifier: workspace:*
-        version: link:../business
       zod:
         specifier: ^4.6.5
         version: 4.6.5
 
   strategies/trading:
     dependencies:
+      '@aoc/backtest':
+        specifier: workspace:*
+        version: link:../../packages/backtest
       '@aoc/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@aoc/paper-engine':
+        specifier: workspace:*
+        version: link:../../packages/paper-engine
       '@aoc/strategies':
         specifier: workspace:*
         version: link:../../packages/strategies

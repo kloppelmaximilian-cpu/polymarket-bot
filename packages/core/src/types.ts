@@ -126,6 +126,8 @@ export interface Assumption {
   /** URL or citation, or null when this is an unverified assumption. */
   source: string | null;
   note?: string | undefined;
+  /** How the stress test moves this input (conversion ↓, cost ↑, churn ↑ …). */
+  stressRole?: 'conversion' | 'cost' | 'churn' | 'demand' | 'price' | undefined;
 }
 
 export interface SourceRef {
