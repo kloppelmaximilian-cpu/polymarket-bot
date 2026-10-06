@@ -74,11 +74,25 @@ describe('opportunity score', () => {
       riskLevel: 'MEDIUM',
       capitalRequirement: 2000,
       qualitative: q,
-      business: { provenance: 'ESTIMATED', probProfitableAtHorizon: 0.7, breakEvenMonthP50: 8, cumulativeProfitP10: -3000, cumulativeProfitP50: 9000, cumulativeProfitP90: 30000, maxCashNeedP50: 2500, ltvToCac: 3.5, probRuin: 0.2, stressedProfitP50: 1000, horizonMonths: 24 },
+      business: { provenance: 'ESTIMATED', probProfitableAtHorizon: 0.7, breakEvenMonthP50: 8, cumulativeProfitP10: -3000, cumulativeProfitP50: 9000, cumulativeProfitP90: 30000, maxCashNeedP50: 2500, ltvToCac: 3.5, probRuin: 0.2, stressedProfitP50: 1000, horizonMonths: 24, verifiedAssumptionShare: 0.6 },
     });
     expect(s.components.profit).not.toBeNull();
     expect(s.confidence).toBe('MEDIUM');
     expect(s.evidence).toBe('ESTIMATED');
+  });
+
+  it('keeps estimates on unverified assumptions at LOW confidence and capped', () => {
+    const s = computeScore({
+      kind: 'BUSINESS',
+      status: 'EVALUATING',
+      riskLevel: 'LOW',
+      capitalRequirement: 500,
+      qualitative: { ...q, automation: 100, scalability: 100 },
+      business: { provenance: 'ESTIMATED', probProfitableAtHorizon: 0.95, breakEvenMonthP50: 3, cumulativeProfitP10: 5000, cumulativeProfitP50: 50000, cumulativeProfitP90: 90000, maxCashNeedP50: 500, ltvToCac: 9, probRuin: 0, stressedProfitP50: 20000, horizonMonths: 24, verifiedAssumptionShare: 0 },
+    });
+    expect(s.confidence).toBe('LOW');
+    expect(s.overall).toBeLessThanOrEqual(60);
+    expect(s.caps.join()).toMatch(/unverified/);
   });
 
   it('ranks by score, then confidence', () => {

@@ -20,3 +20,9 @@ export const PG_DEADLOCK = '40P01';
 export function isUniqueViolation(err: unknown): boolean {
   return pgErrorCode(err) === PG_UNIQUE_VIOLATION;
 }
+
+/** Rows of a raw `db.execute` result (node-postgres and PGlite both expose `.rows`). */
+export function rowsOf<T = Record<string, unknown>>(result: unknown): T[] {
+  const rows = (result as { rows?: unknown }).rows;
+  return Array.isArray(rows) ? (rows as T[]) : [];
+}

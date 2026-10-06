@@ -18,6 +18,7 @@ CREATE TRIGGER audit_logs_append_only
 CREATE OR REPLACE FUNCTION aoc_freeze_version_params() RETURNS trigger AS $$
 BEGIN
   IF NEW.params IS DISTINCT FROM OLD.params
+     OR NEW.assumptions IS DISTINCT FROM OLD.assumptions
      OR NEW.seq IS DISTINCT FROM OLD.seq
      OR NEW.label IS DISTINCT FROM OLD.label
      OR NEW.experiment_id IS DISTINCT FROM OLD.experiment_id

@@ -129,7 +129,8 @@ describe('auto-reject', () => {
   });
   it('rejects business models with a negative median and low odds', () => {
     const r = rejectionReasons({ kind: 'BUSINESS', compliance: okCompliance, maxDrawdownLimit: 0.5, supportsWalkForward: false, estimate: { probProfitableAtHorizon: 0.1, breakEvenMonthP50: null, cumulativeProfitP50: -5000, ltvToCac: 0.5, probRuin: 0.8, stressedProfitP50: -9000, grossMarginPct: -0.1, verifiedAssumptionShare: 0 } });
-    expect(r.reasons).toEqual(expect.arrayContaining(['NEGATIVE_EV', 'EXCESSIVE_RISK', 'HIGH_COST']));
+    expect(r.reasons).toEqual(expect.arrayContaining(['NEGATIVE_EV', 'HIGH_COST']));
+    expect(r.reasons).not.toContain('EXCESSIVE_RISK'); // budget exhaustion is handled by the PROMISING gate
   });
 });
 

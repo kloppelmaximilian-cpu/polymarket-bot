@@ -179,6 +179,12 @@ export const experiments = pgTable(
     compliance: jsonb('compliance').$type<unknown[]>().notNull().default([]),
     paperCapital: money('paper_capital').notNull().default('0'),
     isDemo: boolean('is_demo').notNull().default(false),
+    statusBeforePause: text('status_before_pause'),
+    probationCount: integer('probation_count').notNull().default(0),
+    paperStartedAt: timestamp('paper_started_at', { withTimezone: true }),
+    lastEvaluatedAt: timestamp('last_evaluated_at', { withTimezone: true }),
+    /** Latest gate results and evidence used for the last status decision. */
+    evaluation: jsonb('evaluation').$type<Record<string, unknown>>().notNull().default({}),
     lastActivityAt: timestamp('last_activity_at', { withTimezone: true }),
     stoppedAt: timestamp('stopped_at', { withTimezone: true }),
     createdAt: createdAt(),
@@ -215,6 +221,8 @@ export const experimentVersions = pgTable(
     seq: integer('seq').notNull(),
     label: text('label').notNull(),
     params: jsonb('params').$type<Record<string, unknown>>().notNull(),
+    /** Assumption set the version is evaluated under (immutable like params). */
+    assumptions: jsonb('assumptions').$type<unknown[]>().notNull().default([]),
     strategyModuleVersion: text('strategy_module_version').notNull(),
     parentVersionId: uuid('parent_version_id'),
     createdBy: text('created_by').notNull().default('SYSTEM'),
@@ -366,7 +374,13 @@ export const paperAccounts = pgTable(
     spendTotal: money('spend_total').notNull().default('0'),
     apiSpendTotal: money('api_spend_total').notNull().default('0'),
     status: text('status').notNull().default('ACTIVE'), // ACTIVE | FROZEN | CLOSED
+    ledgerSeq: integer('ledger_seq').notNull().default(0),
     lockVersion: integer('lock_version').notNull().default(0),
+    /** PAPER for live-data paper trading, SIMULATED for business operating simulations. */
+    provenance: text('provenance').notNull().default('PAPER'),
+    strategyState: jsonb('strategy_state').$type<Record<string, unknown>>().notNull().default({}),
+    simulatedDays: integer('simulated_days').notNull().default(0),
+    lastTickAt: timestamp('last_tick_at', { withTimezone: true }),
     isDemo: boolean('is_demo').notNull().default(false),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -388,6 +402,8 @@ export const paperOrders = pgTable(
     venue: text('venue').notNull(),
     symbol: text('symbol').notNull(),
     instrumentKind: text('instrument_kind').notNull(), // SPOT | PERP | OUTCOME
+    /** Full instrument (fee model, tick size) so open orders can be restored exactly. */
+    instrument: jsonb('instrument').$type<Record<string, unknown>>().notNull(),
     side: text('side').notNull(), // BUY | SELL
     type: text('type').notNull(), // MARKET | LIMIT
     quantity: money('quantity').notNull(),
@@ -395,6 +411,7 @@ export const paperOrders = pgTable(
     status: text('status').notNull(),
     filledQuantity: money('filled_quantity').notNull().default('0'),
     avgFillPrice: money('avg_fill_price'),
+    reserved: money('reserved').notNull().default('0'),
     rejectReason: text('reject_reason'),
     reduceOnly: boolean('reduce_only').notNull().default(false),
     postOnly: boolean('post_only').notNull().default(false),

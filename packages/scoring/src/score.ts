@@ -75,6 +75,8 @@ export interface BusinessEvidence {
   probRuin: number;
   stressedProfitP50: number;
   horizonMonths: number;
+  /** Share of the assumptions that cite a source (0..1). */
+  verifiedAssumptionShare: number;
 }
 
 export interface ScoringInput {
@@ -288,6 +290,8 @@ export function computeScore(input: ScoringInput): ScoreResult {
     }
   };
   if (c.profit === null) cap(60, 'No profit evidence');
+  const unverified = !!b && input.kind === 'BUSINESS' && b.verifiedAssumptionShare < 0.5;
+  if (unverified) cap(60, 'Estimate rests mostly on unverified assumptions');
   if (input.riskLevel === 'EXTREME') cap(40, 'Extreme risk level');
   if (expectancyNegative) cap(25, 'Negative expectancy in the evidence');
   if ((input.failureReasons ?? []).includes('NEGATIVE_EV')) cap(25, 'Failed: negative expected value');
@@ -296,7 +300,7 @@ export function computeScore(input: ScoringInput): ScoreResult {
   let confidence: Confidence = 'LOW';
   if (c.profit !== null) {
     const rank = EVIDENCE_RANK[evidence];
-    if (input.kind === 'BUSINESS') confidence = 'MEDIUM';
+    if (input.kind === 'BUSINESS') confidence = unverified ? 'LOW' : 'MEDIUM';
     else if (rank >= EVIDENCE_RANK.PAPER && (f?.trades ?? 0) >= 30) confidence = 'HIGH';
     else if (rank >= EVIDENCE_RANK.HISTORICAL && (f?.trades ?? 0) >= 30) confidence = 'MEDIUM';
   }

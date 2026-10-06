@@ -78,6 +78,8 @@ export const configSchema = z.object({
   // ---- Paper money ----
   PAPER_TOTAL_CAPITAL_USD: num(10_000, { min: 0 }),
   PAPER_DEFAULT_ALLOCATION_USD: num(1_000, { min: 0 }),
+  /** Budget pool for simulated business operations (kept apart from the trading paper fund). */
+  BUSINESS_SIM_BUDGET_USD: num(20_000, { min: 0 }),
   PAPER_TICK_SECONDS: num(60, { min: 5, int: true }),
   BUSINESS_PAPER_DAYS_PER_TICK: num(1, { min: 1, max: 30, int: true }),
 

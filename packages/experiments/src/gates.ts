@@ -201,7 +201,7 @@ export function rejectionReasons(e: EvaluationEvidence, t: GateThresholds = DEFA
     const s = e.estimate;
     if (s) {
       if (s.cumulativeProfitP50 < 0 && s.probProfitableAtHorizon < 0.25) add('NEGATIVE_EV', `median outcome ${s.cumulativeProfitP50.toFixed(0)} USD, P(profit) ${pct(s.probProfitableAtHorizon)}`);
-      if (s.probRuin > 0.6) add('EXCESSIVE_RISK', `P(running out of the allocated capital) ${pct(s.probRuin)}`);
+      // Running out of the budget is a funding question, not a verdict: it blocks PROMISING (see the gate), it does not fail the idea.
       if (s.grossMarginPct !== null && s.grossMarginPct < 0) add('HIGH_COST', `negative gross margin ${pct(s.grossMarginPct)}`);
     }
   }

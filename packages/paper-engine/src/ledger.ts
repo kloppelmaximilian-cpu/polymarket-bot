@@ -1,5 +1,4 @@
-import { Decimal, d } from '@aoc/core';
-import type { TransactionState } from './types';
+import { Decimal, d, type DecimalLike } from '@aoc/core';
 
 export interface LedgerCheck {
   ok: boolean;
@@ -14,7 +13,7 @@ export interface LedgerCheck {
  *   - every balanceAfter equals the running sum
  *   - the final balance equals the account's cash
  */
-export function verifyLedger(transactions: readonly Pick<TransactionState, 'seq' | 'amount' | 'balanceAfter'>[], accountCash: Decimal | string): LedgerCheck {
+export function verifyLedger(transactions: ReadonlyArray<{ seq: number; amount: DecimalLike; balanceAfter: DecimalLike }>, accountCash: DecimalLike): LedgerCheck {
   const problems: string[] = [];
   const sorted = [...transactions].sort((a, b) => a.seq - b.seq);
   let running = new Decimal(0);

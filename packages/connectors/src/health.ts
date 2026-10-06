@@ -77,6 +77,14 @@ export class HealthTracker {
     return deriveHealth(this.get(id), now);
   }
 
+  /** Zero the success/error counters (after they were added to a persistent total). */
+  resetCounters(): void {
+    for (const s of this.sources.values()) {
+      s.successCount = 0;
+      s.errorCount = 0;
+    }
+  }
+
   all(now: number): Array<SourceHealthState & { status: DataHealth }> {
     return [...this.sources.values()].map((s) => ({ ...s, status: deriveHealth(s, now) }));
   }

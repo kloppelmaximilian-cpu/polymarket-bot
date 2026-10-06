@@ -1,5 +1,5 @@
 {
-  "id": "5c57aa7d-0415-4ef2-a255-061f1ea2ba77",
+  "id": "c31e68c4-1c41-463a-8d3c-d396765413b5",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -587,6 +587,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "assumptions": {
+          "name": "assumptions",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
         "strategy_module_version": {
           "name": "strategy_module_version",
           "type": "text",
@@ -873,6 +880,38 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
+        },
+        "status_before_pause": {
+          "name": "status_before_pause",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "probation_count": {
+          "name": "probation_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "paper_started_at": {
+          "name": "paper_started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_evaluated_at": {
+          "name": "last_evaluated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "evaluation": {
+          "name": "evaluation",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
         },
         "last_activity_at": {
           "name": "last_activity_at",
@@ -1852,12 +1891,46 @@
           "notNull": true,
           "default": "'ACTIVE'"
         },
+        "ledger_seq": {
+          "name": "ledger_seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
         "lock_version": {
           "name": "lock_version",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "default": 0
+        },
+        "provenance": {
+          "name": "provenance",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'PAPER'"
+        },
+        "strategy_state": {
+          "name": "strategy_state",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "simulated_days": {
+          "name": "simulated_days",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "last_tick_at": {
+          "name": "last_tick_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         },
         "is_demo": {
           "name": "is_demo",
@@ -2138,6 +2211,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "instrument": {
+          "name": "instrument",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
         "side": {
           "name": "side",
           "type": "text",
@@ -2180,6 +2259,13 @@
           "type": "numeric(30, 10)",
           "primaryKey": false,
           "notNull": false
+        },
+        "reserved": {
+          "name": "reserved",
+          "type": "numeric(30, 10)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
         },
         "reject_reason": {
           "name": "reject_reason",

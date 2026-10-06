@@ -10,7 +10,7 @@ export const TRANSITIONS: Record<ExperimentStatus, readonly ExperimentStatus[]> 
   RESEARCHING: ['PROTOTYPE', 'FAILED', 'PAUSED', 'ARCHIVED'],
   PROTOTYPE: ['BACKTESTING', 'FAILED', 'PAUSED', 'ARCHIVED'],
   BACKTESTING: ['EVALUATING', 'FAILED', 'PAUSED', 'ARCHIVED'],
-  EVALUATING: ['PAPER', 'PROMISING', 'PROBATION', 'READY_FOR_LIVE_REVIEW', 'FAILED', 'PAUSED', 'ARCHIVED'],
+  EVALUATING: ['PAPER', 'PROMISING', 'PROBATION', 'READY_FOR_LIVE_REVIEW', 'BACKTESTING', 'FAILED', 'PAUSED', 'ARCHIVED'],
   PAPER: ['EVALUATING', 'FAILED', 'PAUSED', 'ARCHIVED'],
   PROMISING: ['EVALUATING', 'PAPER', 'PROBATION', 'FAILED', 'PAUSED', 'ARCHIVED'],
   PROBATION: ['PAPER', 'EVALUATING', 'BACKTESTING', 'FAILED', 'PAUSED', 'ARCHIVED'],
@@ -23,8 +23,12 @@ export const TRANSITIONS: Record<ExperimentStatus, readonly ExperimentStatus[]> 
 /** Statuses in which the paper engine accepts automated orders for an experiment. */
 export const PAPER_TRADING_STATUSES: readonly ExperimentStatus[] = ['PAPER', 'PROMISING', 'PROBATION', 'READY_FOR_LIVE_REVIEW'];
 
-/** Statuses the automated pipeline advances on its own. */
-export const PIPELINE_STATUSES: readonly ExperimentStatus[] = ['DISCOVERED', 'RESEARCHING', 'PROTOTYPE', 'BACKTESTING', 'EVALUATING', 'PAPER', 'PROMISING', 'PROBATION', 'READY_FOR_LIVE_REVIEW'];
+/**
+ * Statuses the automated pipeline advances on its own. DISCOVERED is not one
+ * of them: a human (or the seed/triage for starter ideas) decides what gets
+ * tested.
+ */
+export const PIPELINE_STATUSES: readonly ExperimentStatus[] = ['RESEARCHING', 'PROTOTYPE', 'BACKTESTING', 'EVALUATING', 'PAPER', 'PROMISING', 'PROBATION', 'READY_FOR_LIVE_REVIEW'];
 
 /** Transitions only a human may make (never the pipeline). */
 export const MANUAL_ONLY: ReadonlyArray<[ExperimentStatus, ExperimentStatus]> = [
