@@ -73,16 +73,36 @@ Weitere Dokumente: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) ·
 
 | Werkzeug | Version | Hinweis |
 | --- | --- | --- |
-| Node.js | ≥ 22.12 | getestet mit 22.22 |
-| pnpm | 10.x | `corepack enable` aktiviert die im Repo festgelegte Version |
+| Node.js | ≥ 22.12 | getestet mit 22.22 (LTS) |
+| pnpm | 10.x | `npm install -g pnpm@10`; pnpm wechselt selbst auf die im Repo festgelegte Version |
 | PostgreSQL | 16 | per Docker Compose – **oder** ohne Postgres im Embedded-Modus (PGlite) |
 | Docker (optional) | aktuell, mit Compose v2 | für Postgres bzw. den kompletten Stack |
+
+### Node.js und pnpm installieren
+
+Prüfen: `node -v` (muss v22.12 oder neuer zeigen) und `pnpm -v`.
+
+**macOS mit Homebrew** (`brew -v` funktioniert):
+
+```bash
+brew install node@22
+echo "export PATH=\"$(brew --prefix node@22)/bin:\$PATH\"" >> ~/.zshrc && source ~/.zshrc
+npm install -g pnpm@10
+```
+
+**macOS ohne Homebrew / Windows:** das LTS-Installationsprogramm (v22 oder v24) von
+<https://nodejs.org> ausführen, ein neues Terminal öffnen, dann
+`npm install -g pnpm@10` (unter macOS ggf. mit `sudo` davor).
+
+**Linux:** Node 22 über den Paketmanager bzw. <https://nodejs.org>, dann `npm install -g pnpm@10`.
+
+> `corepack enable` funktioniert nur, wenn Node Corepack mitbringt (bis Node 24);
+> `npm install -g pnpm@10` funktioniert immer.
 
 ## Installation
 
 ```bash
 git clone <repo> && cd polymarket-bot
-corepack enable
 
 # Variante A – mit PostgreSQL (empfohlen)
 docker compose up -d postgres
