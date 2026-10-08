@@ -74,7 +74,14 @@ describe('HttpClient', () => {
     const near = client(() => (++calls === 1 ? json(body, 403, { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': resetIn(5) }) : json({ ok: true })), { sleep: async (ms) => void waits.push(ms) });
     expect(await near.json('https://api.github.com/x', z.object({ ok: z.boolean() }), { source: 'github.search' })).toEqual({ ok: true });
     expect(waits).toHaveLength(1);
-    expect(waits[0]!).toBeLessThanOrEqual(5_000);
+    expect(waits[0]!).toBeGreaterThan(1_000);
+    expect(waits[0]!).toBeLessThanOrEqual(6_000);
+    // A reset that is already past (or not epoch seconds) is ignored: normal backoff, not a zero wait.
+    waits.length = 0;
+    calls = 0;
+    const past = client(() => (++calls === 1 ? json(body, 403, { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': resetIn(-30) }) : json({ ok: true })), { sleep: async (ms) => void waits.push(ms) });
+    await past.json('https://api.github.com/x', z.object({ ok: z.boolean() }), { source: 'github.search' });
+    expect(waits[0]!).toBeGreaterThanOrEqual(500);
     // Without headers the message alone identifies it; an ordinary 403 stays an HTTP error.
     await expect(client(() => json(body, 403)).request('https://api.github.com/x', { source: 't', })).rejects.toMatchObject({ kind: 'RATE_LIMITED' });
     await expect(client(() => json({ message: 'Resource not accessible' }, 403)).request('https://api.github.com/x', { source: 't' })).rejects.toMatchObject({ kind: 'HTTP' });

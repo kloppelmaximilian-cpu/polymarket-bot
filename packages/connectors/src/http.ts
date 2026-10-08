@@ -143,11 +143,11 @@ function backoff(attempt: number, retryAfterMs?: number): number {
 
 function classifyStatus(res: Response, source: string, body: string): ExternalApiError {
   const ra = res.headers.get('retry-after');
-  const reset = res.headers.get('x-ratelimit-reset');
-  // Retry-After in seconds, else the quota reset time (epoch seconds, e.g. GitHub).
-  const retryAfterMs = ra && /^\d+$/.test(ra) ? Number(ra) * 1000 : reset && /^\d+$/.test(reset) ? Math.max(0, Number(reset) * 1000 - Date.now()) : undefined;
+  const remainingZero = res.headers.get('x-ratelimit-remaining') === '0';
+  // Retry-After in seconds, else (quota used up) the reset time in epoch seconds, as GitHub sends it.
+  const retryAfterMs = ra && /^\d+$/.test(ra) ? Number(ra) * 1000 : remainingZero ? untilReset(res.headers.get('x-ratelimit-reset')) : undefined;
   // GitHub answers an exhausted quota with 403 (not 429).
-  const quotaExhausted = res.status === 403 && (res.headers.get('x-ratelimit-remaining') === '0' || /rate limit/i.test(body));
+  const quotaExhausted = res.status === 403 && (remainingZero || /rate limit/i.test(body));
   if (res.status === 429 || res.status === 418 || quotaExhausted) {
     const when = retryAfterMs !== undefined ? `; retry in ${Math.ceil(retryAfterMs / 1000)} s` : '';
     return new ExternalApiError('RATE_LIMITED', `${source}: rate limited (HTTP ${res.status}${when})`, { status: res.status, retryAfterMs, source });
@@ -156,6 +156,17 @@ function classifyStatus(res: Response, source: string, body: string): ExternalAp
     return new ExternalApiError('BLOCKED', `${source}: access refused (HTTP ${res.status}); the service may be unavailable from this location`, { status: res.status, source });
   }
   return new ExternalApiError('HTTP', `${source}: HTTP ${res.status}${body ? ` — ${body.slice(0, 200)}` : ''}`, { status: res.status, source });
+}
+
+/**
+ * Wait until an epoch-seconds reset, plus a second for its whole-second
+ * rounding. A reset in the past or more than an hour away is not trusted
+ * (clock skew or a different format): undefined means normal backoff.
+ */
+function untilReset(reset: string | null): number | undefined {
+  if (!reset || !/^\d+$/.test(reset)) return undefined;
+  const ms = Number(reset) * 1000 - Date.now() + 1000;
+  return ms > 1000 && ms <= 3_600_000 ? ms : undefined;
 }
 
 function classifyThrown(e: unknown, source: string): ExternalApiError {

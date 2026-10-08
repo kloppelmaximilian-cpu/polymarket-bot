@@ -10,7 +10,7 @@ import { generateIdeas, runMonitor, triageIdeas } from './research-service';
 import { scoreAll } from './scoring';
 import { deliverPendingNotifications } from './notifications';
 import { experiments, jobRuns } from '@aoc/database';
-import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, inArray, ne, or, sql } from 'drizzle-orm';
 import type { IdeaFocus } from '@aoc/research';
 
 export const JOB_NAMES = ['pipeline.advance', 'paper.tick', 'risk.monitor', 'scores.recompute', 'data.health', 'research.monitor', 'ideas.generate', 'lab.run', 'maintenance.prune', 'notifications.deliver'] as const;
@@ -52,7 +52,7 @@ export function buildJobs(ctx: PlatformContext): Record<JobName, JobDefinition> 
     'research.monitor': {
       haltable: false,
       handler: async ({ job }) => {
-        const skip = await skipScheduledRun(ctx, job, MONITOR_MIN_GAP_MS);
+        const skip = await skipScheduledRun(ctx, job);
         if (skip) return skip;
         return runMonitor(ctx, WORKER);
       },
@@ -60,7 +60,7 @@ export function buildJobs(ctx: PlatformContext): Record<JobName, JobDefinition> 
     'ideas.generate': {
       haltable: false,
       handler: async ({ job }) => {
-        const skip = await skipScheduledRun(ctx, job, IDEAS_MIN_GAP_MS);
+        const skip = await skipScheduledRun(ctx, job);
         if (skip) return skip;
         const gen = await generateIdeas(ctx, { focus: (job.payload.focus as IdeaFocus | undefined) ?? 'any', count: Number(job.payload.count ?? 10) }, WORKER);
         const triage = await triageIdeas(ctx, WORKER, Number(job.payload.maxConvert ?? 2));
@@ -95,26 +95,38 @@ export function buildJobs(ctx: PlatformContext): Record<JobName, JobDefinition> 
   };
 }
 
-/** Scheduled runs of the external-API jobs closer together than this are skipped. */
-const MONITOR_MIN_GAP_MS = 6 * 3_600_000;
-const IDEAS_MIN_GAP_MS = 12 * 3_600_000;
-
 /**
  * The scheduler enqueues once per time bucket, so a start shortly before a
- * bucket boundary runs a job twice within minutes. For jobs that call rate-
- * limited external APIs, a scheduled run (payload.scheduled) is skipped when
- * a real run succeeded recently. Manual runs always go ahead.
+ * bucket boundary (00:00 / 12:00 UTC) runs a job twice within minutes. For
+ * jobs that call rate-limited external APIs, a scheduled run
+ * (payload.scheduled) is skipped while another run of the same job is in
+ * progress, or when a real run finished less than SCHEDULED_MIN_GAP_MS ago.
+ * The gap only has to cover that double run, not the schedule's interval.
+ * Manual runs always go ahead.
  */
-async function skipScheduledRun(ctx: PlatformContext, job: JobRow, minGapMs: number): Promise<{ skipped: string } | null> {
+const SCHEDULED_MIN_GAP_MS = 3_600_000;
+
+async function skipScheduledRun(ctx: PlatformContext, job: JobRow): Promise<{ skipped: string } | null> {
   if (!job.payload.scheduled) return null;
-  const since = new Date(ctx.clock.now().getTime() - minGapMs);
-  const [recent] = await ctx.db
-    .select({ finishedAt: jobRuns.finishedAt })
+  const now = ctx.clock.now();
+  const since = new Date(now.getTime() - SCHEDULED_MIN_GAP_MS);
+  const [other] = await ctx.db
+    .select({ status: jobRuns.status, finishedAt: jobRuns.finishedAt })
     .from(jobRuns)
-    .where(and(eq(jobRuns.name, job.name), eq(jobRuns.status, 'SUCCEEDED'), gte(jobRuns.finishedAt, since), sql`${jobRuns.result}->>'skipped' IS NULL`))
+    .where(
+      and(
+        eq(jobRuns.name, job.name),
+        ne(jobRuns.id, job.id),
+        or(
+          and(eq(jobRuns.status, 'RUNNING'), gt(jobRuns.lockedUntil, now)),
+          and(eq(jobRuns.status, 'SUCCEEDED'), gte(jobRuns.finishedAt, since), sql`${jobRuns.result}->>'skipped' IS NULL`),
+        ),
+      ),
+    )
     .orderBy(desc(jobRuns.finishedAt))
     .limit(1);
-  return recent?.finishedAt ? { skipped: `last run finished ${recent.finishedAt.toISOString()}, less than ${minGapMs / 3_600_000} h ago` } : null;
+  if (!other) return null;
+  return { skipped: other.status === 'RUNNING' ? 'another run of this job is in progress' : `last run finished ${other.finishedAt?.toISOString()}, less than 1 h ago` };
 }
 
 export function buildSchedule(cfg: AppConfig): ScheduleEntry[] {

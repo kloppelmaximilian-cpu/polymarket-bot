@@ -159,7 +159,16 @@ export async function syncDataSources(ctx: PlatformContext): Promise<void> {
   const now = ctx.clock.now().getTime();
   for (const def of DATA_SOURCES) {
     const s = ctx.marketData.health.state(def.id);
-    const enabled = def.kind === 'MARKET_DATA' ? ctx.config.MARKET_DATA_ENABLED : def.kind === 'RESEARCH' ? ctx.config.RESEARCH_MONITOR_ENABLED : ctx.config.IDEA_GENERATOR_LLM_ENABLED && !!ctx.config.ANTHROPIC_API_KEY;
+    const websocket = def.transport === 'WEBSOCKET';
+    const enabled =
+      def.kind === 'MARKET_DATA'
+        ? ctx.config.MARKET_DATA_ENABLED && (!websocket || ctx.config.MARKET_DATA_WEBSOCKETS)
+        : def.kind === 'RESEARCH'
+          ? ctx.config.RESEARCH_MONITOR_ENABLED
+          : ctx.config.IDEA_GENERATOR_LLM_ENABLED && !!ctx.config.ANTHROPIC_API_KEY;
+    // Only the process running the stream observes it; another process (e.g. the CLI) must not overwrite its row.
+    if (websocket && enabled && !ctx.marketData.streaming) continue;
+    const disabledReason = enabled ? null : websocket && ctx.config.MARKET_DATA_ENABLED ? 'disabled by configuration (MARKET_DATA_WEBSOCKETS=false)' : 'disabled by configuration';
     const [stored] = await ctx.db.select().from(dataSources).where(eq(dataSources.id, def.id));
     // Merge with what other processes recorded (the API and the worker each track health).
     const lastSuccess = Math.max(s.lastSuccessAt ?? 0, stored?.lastSuccessAt?.getTime() ?? 0) || null;
@@ -181,7 +190,7 @@ export async function syncDataSources(ctx: PlatformContext): Promise<void> {
       staleAfterMs: def.staleAfterMs,
       successCount: (stored?.successCount ?? 0) + s.successCount,
       errorCount: (stored?.errorCount ?? 0) + s.errorCount,
-      meta: { docs: def.docs, notes: def.notes, host: def.host, disabledReason: enabled ? null : 'disabled by configuration' },
+      meta: { docs: def.docs, notes: def.notes, host: def.host, disabledReason },
       updatedAt: new Date(now),
     };
     await ctx.db.insert(dataSources).values(values).onConflictDoUpdate({ target: dataSources.id, set: values });

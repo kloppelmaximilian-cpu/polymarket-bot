@@ -1,6 +1,6 @@
 import type { ComponentHealth } from '@aoc/core';
 import { dataSources, jobRuns, workerHeartbeats } from '@aoc/database';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import type { PlatformContext } from './context';
 import { getEmergencyStop } from './settings';
 
@@ -12,12 +12,14 @@ export interface ComponentStatus {
 
 const worst = (xs: ComponentHealth[]): ComponentHealth => (xs.includes('OFFLINE') ? 'OFFLINE' : xs.includes('DEGRADED') ? 'DEGRADED' : 'ONLINE');
 
+/** Latest run and latest successful run of a job; runs that only skipped themselves do not count. */
 async function lastJob(ctx: PlatformContext, name: string) {
-  const [row] = await ctx.db.select().from(jobRuns).where(eq(jobRuns.name, name)).orderBy(desc(jobRuns.createdAt)).limit(1);
+  const ran = and(eq(jobRuns.name, name), sql`${jobRuns.result}->>'skipped' IS NULL`);
+  const [row] = await ctx.db.select().from(jobRuns).where(ran).orderBy(desc(jobRuns.createdAt)).limit(1);
   const [ok] = await ctx.db
     .select()
     .from(jobRuns)
-    .where(and(eq(jobRuns.name, name), eq(jobRuns.status, 'SUCCEEDED')))
+    .where(and(ran, eq(jobRuns.status, 'SUCCEEDED')))
     .orderBy(desc(jobRuns.finishedAt))
     .limit(1);
   return { last: row ?? null, lastOk: ok ?? null };

@@ -60,6 +60,11 @@ export class MarketDataService {
     if (o.streams) this.attachStreams(o.streams);
   }
 
+  /** True while a live stream is attached (only the process that runs paper ticks has one). */
+  get streaming(): boolean {
+    return this.streams !== null;
+  }
+
   /** Use a live stream for Binance quotes and bars; it reports its health to this service. */
   attachStreams(streams: BinanceStreams | null): void {
     this.streams?.reportHealthTo(null);
