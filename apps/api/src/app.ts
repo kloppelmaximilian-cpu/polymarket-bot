@@ -7,7 +7,7 @@ import swaggerUi from '@fastify/swagger-ui';
 import { AocError, describeError, type ErrorCode } from '@aoc/core';
 import { JobQueue } from '@aoc/jobs';
 import { recordError, type Actor, type PlatformContext } from '@aoc/platform';
-import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
+import Fastify, { LogController, type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { jsonSchemaTransform, serializerCompiler, validatorCompiler, type ZodTypeProvider } from 'fastify-type-provider-zod';
 import { ZodError } from 'zod';
 import { registerRoutes } from './routes';
@@ -34,6 +34,19 @@ const STATUS: Record<ErrorCode, number> = {
   INTERNAL: 500,
 };
 
+/**
+ * One info line per request floods the terminal: requests are logged at debug
+ * level (LOG_LEVEL=debug shows them). Failed requests keep their error log.
+ */
+class QuietRequestLog extends LogController {
+  override incomingRequest(): void {}
+
+  override requestCompleted(error: Error | null | undefined, request: FastifyRequest, reply: FastifyReply): void {
+    if (error) reply.log.error({ err: describeError(error), method: request.method, url: request.url, statusCode: reply.statusCode }, 'request errored');
+    else reply.log.debug({ method: request.method, url: request.url, statusCode: reply.statusCode, ms: Math.round(reply.elapsedTime) }, 'request');
+  }
+}
+
 export interface AppDeps {
   ctx: PlatformContext;
   queue: JobQueue;
@@ -53,8 +66,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({
     loggerInstance: deps.logger === false ? undefined : (ctx.logger as never),
     genReqId: () => crypto.randomUUID(),
-    // One line per request floods the terminal; requests are logged at debug level below.
-    disableRequestLogging: true,
+    logController: new QuietRequestLog(),
     bodyLimit: 1_000_000,
     // Not behind a proxy by default: trusting X-Forwarded-For would let clients spoof their IP
     // (and the rate-limit allow-list). Enable only behind a reverse proxy you control.
@@ -90,11 +102,6 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       return reply.code(401).send({ error: { code: 'UNAUTHORIZED', message: 'missing or invalid bearer token' } });
     }
     req.actor = { type: 'USER', id: token ? 'api-token' : 'local-user' };
-  });
-
-  // Visible with LOG_LEVEL=debug; server errors are logged by the error handler regardless.
-  app.addHook('onResponse', async (req, reply) => {
-    req.log.debug({ method: req.method, url: req.url, statusCode: reply.statusCode, ms: Math.round(reply.elapsedTime) }, 'request');
   });
 
   app.setErrorHandler(async (error, req, reply) => {
