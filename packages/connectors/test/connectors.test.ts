@@ -57,6 +57,29 @@ describe('HttpClient', () => {
     expect(waits).toEqual([7000, 7000]);
   });
 
+  it('recognises GitHub\'s exhausted quota (403) as a rate limit and waits only for short resets', async () => {
+    const body = { message: 'API rate limit exceeded for 1.2.3.4. (But here\'s the good news: Authenticated requests get a higher rate limit.)' };
+    const resetIn = (s: number) => String(Math.floor(Date.now() / 1000) + s);
+    // Reset far away: fail at once instead of stalling the caller.
+    let calls = 0;
+    const waits: number[] = [];
+    const far = client(() => (calls++, json(body, 403, { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': resetIn(50) })), { sleep: async (ms) => void waits.push(ms), retries: 2 });
+    const err = await far.request('https://api.github.com/search/repositories', { source: 'github.search' }).catch((e: unknown) => e);
+    expect(err).toMatchObject({ kind: 'RATE_LIMITED', status: 403 });
+    expect((err as ExternalApiError).retryAfterMs).toBeGreaterThan(40_000);
+    expect(calls).toBe(1);
+    expect(waits).toEqual([]);
+    // Reset soon: wait for it, then succeed.
+    calls = 0;
+    const near = client(() => (++calls === 1 ? json(body, 403, { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': resetIn(5) }) : json({ ok: true })), { sleep: async (ms) => void waits.push(ms) });
+    expect(await near.json('https://api.github.com/x', z.object({ ok: z.boolean() }), { source: 'github.search' })).toEqual({ ok: true });
+    expect(waits).toHaveLength(1);
+    expect(waits[0]!).toBeLessThanOrEqual(5_000);
+    // Without headers the message alone identifies it; an ordinary 403 stays an HTTP error.
+    await expect(client(() => json(body, 403)).request('https://api.github.com/x', { source: 't', })).rejects.toMatchObject({ kind: 'RATE_LIMITED' });
+    await expect(client(() => json({ message: 'Resource not accessible' }, 403)).request('https://api.github.com/x', { source: 't' })).rejects.toMatchObject({ kind: 'HTTP' });
+  });
+
   it('does not retry client errors and classifies geo blocks', async () => {
     let calls = 0;
     const http = client(() => {

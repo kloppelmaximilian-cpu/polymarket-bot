@@ -115,6 +115,23 @@ describe('research monitor', () => {
     expect(res.items.some((i) => i.sourceType === 'NEWS')).toBe(true);
     expect(res.errors.join()).toMatch(/arxiv/);
   });
+
+  it('stops searching GitHub after a rate limit but still asks the other sources', async () => {
+    const hosts: string[] = [];
+    const res = await runResearchMonitor(
+      http((url) => {
+        hosts.push(url.hostname);
+        if (url.hostname === 'api.github.com') return new Response(JSON.stringify({ message: 'API rate limit exceeded for 1.2.3.4.' }), { status: 403, headers: { 'x-ratelimit-remaining': '0' } });
+        if (url.hostname === 'export.arxiv.org') return new Response('<feed xmlns="http://www.w3.org/2005/Atom"></feed>', { status: 200 });
+        return json({ hits: [] });
+      }),
+      { topics: ['a', 'b', 'c', 'd'] },
+    );
+    expect(hosts.filter((h) => h === 'api.github.com')).toHaveLength(1);
+    expect(hosts.filter((h) => h === 'hn.algolia.com').length).toBeGreaterThan(0);
+    expect(res.errors.join('\n')).toMatch(/rate limited/);
+    expect(res.errors.join('\n')).toMatch(/skipped 3 remaining search\(es\).*GITHUB_TOKEN/);
+  });
 });
 
 describe('LLM idea generator', () => {

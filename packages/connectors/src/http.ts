@@ -93,7 +93,8 @@ export class HttpClient {
         if (!res.ok) {
           const err = classifyStatus(res, ro.source, await safeText(res));
           this.opts.onRequest?.({ source: ro.source, url: redact(url.toString()), ok: false, status: res.status, latencyMs, error: err });
-          if (err.retryable && attempt < retries) {
+          // Waiting longer than MAX_RETRY_WAIT_MS would stall the caller: fail now, the caller decides.
+          if (err.retryable && attempt < retries && (err.retryAfterMs ?? 0) <= MAX_RETRY_WAIT_MS) {
             attempt++;
             await this.sleep(backoff(attempt, err.retryAfterMs));
             continue;
@@ -132,15 +133,25 @@ export class HttpClient {
   }
 }
 
+/** Longest server-requested wait the client sleeps through before retrying. */
+const MAX_RETRY_WAIT_MS = 30_000;
+
 function backoff(attempt: number, retryAfterMs?: number): number {
-  if (retryAfterMs !== undefined) return Math.min(30_000, retryAfterMs);
+  if (retryAfterMs !== undefined) return Math.min(MAX_RETRY_WAIT_MS, retryAfterMs);
   return Math.min(10_000, 500 * 2 ** (attempt - 1) + Math.floor(Math.random() * 250));
 }
 
 function classifyStatus(res: Response, source: string, body: string): ExternalApiError {
   const ra = res.headers.get('retry-after');
-  const retryAfterMs = ra && /^\d+$/.test(ra) ? Number(ra) * 1000 : undefined;
-  if (res.status === 429 || res.status === 418) return new ExternalApiError('RATE_LIMITED', `${source}: rate limited (HTTP ${res.status})`, { status: res.status, retryAfterMs, source });
+  const reset = res.headers.get('x-ratelimit-reset');
+  // Retry-After in seconds, else the quota reset time (epoch seconds, e.g. GitHub).
+  const retryAfterMs = ra && /^\d+$/.test(ra) ? Number(ra) * 1000 : reset && /^\d+$/.test(reset) ? Math.max(0, Number(reset) * 1000 - Date.now()) : undefined;
+  // GitHub answers an exhausted quota with 403 (not 429).
+  const quotaExhausted = res.status === 403 && (res.headers.get('x-ratelimit-remaining') === '0' || /rate limit/i.test(body));
+  if (res.status === 429 || res.status === 418 || quotaExhausted) {
+    const when = retryAfterMs !== undefined ? `; retry in ${Math.ceil(retryAfterMs / 1000)} s` : '';
+    return new ExternalApiError('RATE_LIMITED', `${source}: rate limited (HTTP ${res.status}${when})`, { status: res.status, retryAfterMs, source });
+  }
   if (res.status === 451 || (res.status === 403 && /restrict|forbidden|location|blocked/i.test(body))) {
     return new ExternalApiError('BLOCKED', `${source}: access refused (HTTP ${res.status}); the service may be unavailable from this location`, { status: res.status, source });
   }

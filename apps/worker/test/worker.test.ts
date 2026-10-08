@@ -1,7 +1,7 @@
-import { loadConfig, silentLogger } from '@aoc/core';
+import { loadConfig, newId, silentLogger } from '@aoc/core';
 import { createTestDatabase, jobRuns, workerHeartbeats, type DatabaseHandle } from '@aoc/database';
 import { JobQueue } from '@aoc/jobs';
-import { SYSTEM, createContext, engageEmergencyStop, releaseEmergencyStop, seed, startBackground, type PlatformContext } from '@aoc/platform';
+import { SYSTEM, buildJobs, buildSchedule, createContext, engageEmergencyStop, releaseEmergencyStop, seed, startBackground, type PlatformContext } from '@aoc/platform';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -72,3 +72,32 @@ describe('background worker', () => {
     }
   }, 90_000);
 });
+
+describe('scheduled runs of external-API jobs', () => {
+  const run = (payload: Record<string, unknown>) =>
+    buildJobs(ctx)['research.monitor'].handler({ job: { id: newId(), name: 'research.monitor', dedupeKey: null, payload, status: 'RUNNING', attempts: 1, maxAttempts: 1, runAt: new Date(), lockedBy: 't', lockedUntil: null }, keepAlive: async () => undefined, log: ctx.logger });
+
+  it('skips a scheduled run shortly after a real one, never a manual run', async () => {
+    await h.db.delete(jobRuns).where(eq(jobRuns.name, 'research.monitor'));
+    // No earlier run: the scheduled run goes ahead.
+    expect(await run({ scheduled: true })).not.toHaveProperty('skipped');
+    // A run that finished an hour ago: the next scheduled run is skipped …
+    await h.db.insert(jobRuns).values({ name: 'research.monitor', status: 'SUCCEEDED', finishedAt: new Date(Date.now() - 3_600_000), result: { found: 3 } });
+    expect(await run({ scheduled: true })).toHaveProperty('skipped');
+    // … a manual run is not.
+    expect(await run({})).not.toHaveProperty('skipped');
+    // Skipped runs do not count as runs, and a run seven hours ago is old enough.
+    await h.db.delete(jobRuns).where(eq(jobRuns.name, 'research.monitor'));
+    await h.db.insert(jobRuns).values([
+      { name: 'research.monitor', status: 'SUCCEEDED', finishedAt: new Date(Date.now() - 60_000), result: { skipped: 'x' } },
+      { name: 'research.monitor', status: 'SUCCEEDED', finishedAt: new Date(Date.now() - 7 * 3_600_000), result: { found: 1 } },
+    ]);
+    expect(await run({ scheduled: true })).not.toHaveProperty('skipped');
+  });
+
+  it('marks the long-interval schedule entries as scheduled', () => {
+    const entries = buildSchedule(loadConfig({ DATABASE_URL: 'memory://', RESEARCH_MONITOR_ENABLED: 'true' }));
+    for (const name of ['research.monitor', 'ideas.generate']) expect(entries.find((e) => e.name === name)?.payload?.scheduled, name).toBe(true);
+  });
+});
+

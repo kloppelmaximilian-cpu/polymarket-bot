@@ -102,8 +102,9 @@ export const DATA_SOURCES: DataSourceDef[] = [
     host: 'api.github.com',
     staleAfterMs: 24 * 3_600_000,
     docs: 'https://docs.github.com/en/rest/search/search#search-repositories',
-    rate: { capacity: 2, refillPerSecond: 0.15 },
-    notes: 'Unauthenticated search: 10 requests/min; with GITHUB_TOKEN: 30/min.',
+    // No burst and one request per 7 s: at most ~8.6 per minute, under the unauthenticated 10/min.
+    rate: { capacity: 1, refillPerSecond: 1 / 7 },
+    notes: 'Unauthenticated search: 10 requests/min per IP; with GITHUB_TOKEN: 30/min.',
   },
   {
     id: 'arxiv.api',

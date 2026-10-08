@@ -1,4 +1,4 @@
-import { describeError, type MonitorCategory } from '@aoc/core';
+import { ExternalApiError, describeError, type MonitorCategory } from '@aoc/core';
 import type { HttpClient } from '@aoc/connectors';
 import { z } from 'zod';
 import { licenseConcern } from './compliance';
@@ -193,7 +193,19 @@ export async function runResearchMonitor(http: HttpClient, opts: { topics?: stri
       errors.push(`${label}: ${describeError(e).message}`);
     }
   };
-  for (const t of topics) await guard(`github "${t}"`, () => searchGitHub(http, t, { token: opts.githubToken }));
+  for (const [i, t] of topics.entries()) {
+    try {
+      items.push(...(await searchGitHub(http, t, { token: opts.githubToken })));
+    } catch (e) {
+      errors.push(`github "${t}": ${describeError(e).message}`);
+      // Every further search would fail the same way and only extend the lockout.
+      if (e instanceof ExternalApiError && e.kind === 'RATE_LIMITED') {
+        const left = topics.length - i - 1;
+        if (left > 0) errors.push(`github: skipped ${left} remaining search(es) after the rate limit${opts.githubToken ? '' : ' (set GITHUB_TOKEN for 30 searches/min instead of 10)'}`);
+        break;
+      }
+    }
+  }
   await guard('arxiv q-fin.TR', () => searchArxiv(http, 'cat:q-fin.TR AND (all:"market making" OR all:arbitrage OR all:"prediction market")'));
   await guard('arxiv agents', () => searchArxiv(http, 'all:"LLM agent" AND all:business'));
   for (const t of ['Show HN automation', 'prediction market', 'AI agent startup']) await guard(`hn "${t}"`, () => searchHackerNews(http, t));

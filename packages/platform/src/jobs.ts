@@ -1,5 +1,5 @@
 import type { AppConfig } from '@aoc/core';
-import { JobQueue, type JobDefinition, type ScheduleEntry } from '@aoc/jobs';
+import { JobQueue, type JobDefinition, type JobRow, type ScheduleEntry } from '@aoc/jobs';
 import { pruneSnapshots, syncDataSources } from './data';
 import { WORKER } from './audit';
 import type { PlatformContext } from './context';
@@ -9,8 +9,8 @@ import { paperTickAll, riskMonitorAll } from './paper-runner';
 import { generateIdeas, runMonitor, triageIdeas } from './research-service';
 import { scoreAll } from './scoring';
 import { deliverPendingNotifications } from './notifications';
-import { experiments } from '@aoc/database';
-import { and, inArray } from 'drizzle-orm';
+import { experiments, jobRuns } from '@aoc/database';
+import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import type { IdeaFocus } from '@aoc/research';
 
 export const JOB_NAMES = ['pipeline.advance', 'paper.tick', 'risk.monitor', 'scores.recompute', 'data.health', 'research.monitor', 'ideas.generate', 'lab.run', 'maintenance.prune', 'notifications.deliver'] as const;
@@ -49,10 +49,19 @@ export function buildJobs(ctx: PlatformContext): Record<JobName, JobDefinition> 
         return { probe };
       },
     },
-    'research.monitor': { haltable: false, handler: async () => runMonitor(ctx, WORKER) },
+    'research.monitor': {
+      haltable: false,
+      handler: async ({ job }) => {
+        const skip = await skipScheduledRun(ctx, job, MONITOR_MIN_GAP_MS);
+        if (skip) return skip;
+        return runMonitor(ctx, WORKER);
+      },
+    },
     'ideas.generate': {
       haltable: false,
       handler: async ({ job }) => {
+        const skip = await skipScheduledRun(ctx, job, IDEAS_MIN_GAP_MS);
+        if (skip) return skip;
         const gen = await generateIdeas(ctx, { focus: (job.payload.focus as IdeaFocus | undefined) ?? 'any', count: Number(job.payload.count ?? 10) }, WORKER);
         const triage = await triageIdeas(ctx, WORKER, Number(job.payload.maxConvert ?? 2));
         return { ...gen, ...triage };
@@ -86,6 +95,28 @@ export function buildJobs(ctx: PlatformContext): Record<JobName, JobDefinition> 
   };
 }
 
+/** Scheduled runs of the external-API jobs closer together than this are skipped. */
+const MONITOR_MIN_GAP_MS = 6 * 3_600_000;
+const IDEAS_MIN_GAP_MS = 12 * 3_600_000;
+
+/**
+ * The scheduler enqueues once per time bucket, so a start shortly before a
+ * bucket boundary runs a job twice within minutes. For jobs that call rate-
+ * limited external APIs, a scheduled run (payload.scheduled) is skipped when
+ * a real run succeeded recently. Manual runs always go ahead.
+ */
+async function skipScheduledRun(ctx: PlatformContext, job: JobRow, minGapMs: number): Promise<{ skipped: string } | null> {
+  if (!job.payload.scheduled) return null;
+  const since = new Date(ctx.clock.now().getTime() - minGapMs);
+  const [recent] = await ctx.db
+    .select({ finishedAt: jobRuns.finishedAt })
+    .from(jobRuns)
+    .where(and(eq(jobRuns.name, job.name), eq(jobRuns.status, 'SUCCEEDED'), gte(jobRuns.finishedAt, since), sql`${jobRuns.result}->>'skipped' IS NULL`))
+    .orderBy(desc(jobRuns.finishedAt))
+    .limit(1);
+  return recent?.finishedAt ? { skipped: `last run finished ${recent.finishedAt.toISOString()}, less than ${minGapMs / 3_600_000} h ago` } : null;
+}
+
 export function buildSchedule(cfg: AppConfig): ScheduleEntry[] {
   const out: ScheduleEntry[] = [
     { name: 'pipeline.advance', everyMs: 60_000, priority: 50 },
@@ -94,12 +125,12 @@ export function buildSchedule(cfg: AppConfig): ScheduleEntry[] {
     { name: 'scores.recompute', everyMs: 5 * 60_000, priority: 80 },
     { name: 'data.health', everyMs: 60_000, priority: 30 },
     { name: 'data.health', everyMs: 15 * 60_000, payload: { probe: true }, priority: 60 },
-    { name: 'ideas.generate', everyMs: 24 * 3_600_000, payload: { focus: 'any', count: 10 }, priority: 120 },
+    { name: 'ideas.generate', everyMs: 24 * 3_600_000, payload: { focus: 'any', count: 10, scheduled: true }, priority: 120 },
     { name: 'lab.run', everyMs: 24 * 3_600_000, priority: 150 },
     { name: 'maintenance.prune', everyMs: 24 * 3_600_000, priority: 200 },
   ];
   if (cfg.NOTIFY_WEBHOOK_URL) out.push({ name: 'notifications.deliver', everyMs: 30_000, priority: 40 });
-  if (cfg.RESEARCH_MONITOR_ENABLED) out.push({ name: 'research.monitor', everyMs: 12 * 3_600_000, priority: 120 });
+  if (cfg.RESEARCH_MONITOR_ENABLED) out.push({ name: 'research.monitor', everyMs: 12 * 3_600_000, payload: { scheduled: true }, priority: 120 });
   return out;
 }
 
