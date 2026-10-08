@@ -53,6 +53,8 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({
     loggerInstance: deps.logger === false ? undefined : (ctx.logger as never),
     genReqId: () => crypto.randomUUID(),
+    // One line per request floods the terminal; requests are logged at debug level below.
+    disableRequestLogging: true,
     bodyLimit: 1_000_000,
     // Not behind a proxy by default: trusting X-Forwarded-For would let clients spoof their IP
     // (and the rate-limit allow-list). Enable only behind a reverse proxy you control.
@@ -88,6 +90,11 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       return reply.code(401).send({ error: { code: 'UNAUTHORIZED', message: 'missing or invalid bearer token' } });
     }
     req.actor = { type: 'USER', id: token ? 'api-token' : 'local-user' };
+  });
+
+  // Visible with LOG_LEVEL=debug; server errors are logged by the error handler regardless.
+  app.addHook('onResponse', async (req, reply) => {
+    req.log.debug({ method: req.method, url: req.url, statusCode: reply.statusCode, ms: Math.round(reply.elapsedTime) }, 'request');
   });
 
   app.setErrorHandler(async (error, req, reply) => {

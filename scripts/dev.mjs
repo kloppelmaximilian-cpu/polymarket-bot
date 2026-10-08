@@ -17,7 +17,7 @@ const envPath = join(root, '.env');
 if (existsSync(envPath)) process.loadEnvFile(envPath);
 else console.warn('No .env found — run `pnpm run setup` first (continuing with defaults).');
 
-const env = { ...process.env, FORCE_COLOR: '1' };
+const env = { NEXT_TELEMETRY_DISABLED: '1', ...process.env, FORCE_COLOR: '1' };
 if (embedded) {
   const url = env.DATABASE_URL?.startsWith('pglite://') ? env.DATABASE_URL : 'pglite://.data/pglite';
   const path = url.slice('pglite://'.length);
