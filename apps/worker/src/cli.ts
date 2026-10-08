@@ -164,7 +164,7 @@ async function main(): Promise<void> {
   }
   const cmd = commands[name];
   if (!cmd) throw new Error(`unknown command "${name}"\n\n${HELP}`);
-  const rt = await openRuntime({ name: 'aoc-cli', migrate: true, streams: false, logger: name === 'job' || name === 'advance' ? undefined : silentLogger() });
+  const rt = await openRuntime({ name: 'aoc-cli', migrate: true, logger: name === 'job' || name === 'advance' ? undefined : silentLogger() });
   try {
     await cmd(rt, args, values);
   } finally {

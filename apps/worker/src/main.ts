@@ -8,7 +8,7 @@ import { onShutdown, openRuntime, startBackground } from '@aoc/platform';
  * job runs once.
  */
 async function main(): Promise<void> {
-  const rt = await openRuntime({ name: 'aoc-worker', migrate: true, streams: true });
+  const rt = await openRuntime({ name: 'aoc-worker', migrate: true });
   if (rt.database.kind === 'pglite') {
     throw new Error('the embedded database (PGlite) is single-process: in embedded mode the worker runs inside the API (pnpm dev:embedded); use PostgreSQL for a separate worker');
   }

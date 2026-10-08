@@ -3,7 +3,7 @@ import { onShutdown, openRuntime, recordEvent, startBackground, type Background 
 import { buildApp } from './app';
 
 async function main(): Promise<void> {
-  const rt = await openRuntime({ name: 'aoc-api', migrate: true, streams: true });
+  const rt = await openRuntime({ name: 'aoc-api', migrate: true });
   const { config, logger, ctx, queue, database } = rt;
 
   // PGlite is single-process, so in embedded mode the worker runs in here.

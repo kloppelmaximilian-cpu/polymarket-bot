@@ -45,7 +45,6 @@ export interface Runtime {
   database: DatabaseHandle;
   ctx: PlatformContext;
   queue: JobQueue;
-  streams: BinanceStreams | null;
   close(): Promise<void>;
 }
 
@@ -56,7 +55,7 @@ export const STREAM_SYMBOLS = ['BTCUSDT', 'ETHUSDT'];
  * Open configuration, logger, database (migrated), platform context and job
  * queue. Shared by the API, the worker and the CLI.
  */
-export async function openRuntime(o: { name: string; migrate?: boolean; streams?: boolean; logger?: Logger }): Promise<Runtime> {
+export async function openRuntime(o: { name: string; migrate?: boolean; logger?: Logger }): Promise<Runtime> {
   const envFile = loadDotEnv();
   // A relative embedded-database path means "relative to the project root", whichever app started.
   if (process.env.DATABASE_URL) process.env.DATABASE_URL = resolvePgliteUrl(process.env.DATABASE_URL, envFile ? dirname(envFile) : process.cwd());
@@ -65,14 +64,7 @@ export async function openRuntime(o: { name: string; migrate?: boolean; streams?
   const database = await createDatabase(config.DATABASE_URL, { onPoolError: (err) => logger.error({ err: describeError(err) }, 'database pool error') });
   if (o.migrate ?? true) await database.migrate();
 
-  let streams: BinanceStreams | null = null;
-  if (o.streams && config.MARKET_DATA_ENABLED && config.MARKET_DATA_WEBSOCKETS) {
-    streams = new BinanceStreams(STREAM_SYMBOLS, '1h', {
-      staleAfterMs: Math.min(config.DATA_STALE_AFTER_MS, 60_000),
-      onState: (state, detail) => logger.info({ state, detail }, 'binance websocket'),
-    });
-  }
-  const ctx = createContext({ db: database.db, config, logger, streams });
+  const ctx = createContext({ db: database.db, config, logger });
   const queue = new JobQueue(database.db, { workerId: `${o.name}@${hostname()}:${process.pid}`, leaseMs: config.JOB_LEASE_MS });
   return {
     config,
@@ -80,11 +72,7 @@ export async function openRuntime(o: { name: string; migrate?: boolean; streams?
     database,
     ctx,
     queue,
-    streams,
-    close: async () => {
-      streams?.stop();
-      await database.close();
-    },
+    close: () => database.close(),
   };
 }
 
@@ -97,8 +85,10 @@ export interface Background {
 /**
  * Start the job worker (and the scheduler when enabled). Used by the worker
  * process, and inside the API in embedded mode (PGlite allows one process).
+ * The live market-data stream belongs here too: only the process that runs
+ * paper ticks needs it.
  */
-export async function startBackground(rt: Pick<Runtime, 'ctx' | 'queue' | 'streams' | 'config' | 'logger'>, o: { scheduler?: boolean } = {}): Promise<Background> {
+export async function startBackground(rt: Pick<Runtime, 'ctx' | 'queue' | 'config' | 'logger'>, o: { scheduler?: boolean; streams?: boolean } = {}): Promise<Background> {
   const { ctx, queue, config, logger } = rt;
   const synced = await syncStrategies(ctx);
   logger.info({ modules: synced }, 'strategy modules synced');
@@ -106,7 +96,15 @@ export async function startBackground(rt: Pick<Runtime, 'ctx' | 'queue' | 'strea
     const r = await seed(ctx);
     logger.info({ created: r.created.length }, 'starter experiments seeded (SEED_ON_START)');
   }
-  rt.streams?.start();
+  let streams: BinanceStreams | null = null;
+  if ((o.streams ?? true) && config.MARKET_DATA_ENABLED && config.MARKET_DATA_WEBSOCKETS) {
+    streams = new BinanceStreams(STREAM_SYMBOLS, '1h', {
+      staleAfterMs: Math.min(config.DATA_STALE_AFTER_MS, 60_000),
+      onState: (state, detail) => logger.info({ state, detail }, 'binance websocket'),
+    });
+    ctx.marketData.attachStreams(streams);
+    streams.start();
+  }
 
   const worker = new Worker(queue, buildJobs(ctx), {
     concurrency: config.WORKER_CONCURRENCY,
@@ -124,13 +122,14 @@ export async function startBackground(rt: Pick<Runtime, 'ctx' | 'queue' | 'strea
     scheduler = new Scheduler(queue, buildSchedule(config), logger);
     scheduler.start();
   }
-  await recordEvent(ctx.db, 'INFO', 'worker', 'WORKER_STARTED', 'worker started', { concurrency: config.WORKER_CONCURRENCY, scheduler: !!scheduler, websockets: !!rt.streams });
+  await recordEvent(ctx.db, 'INFO', 'worker', 'WORKER_STARTED', 'worker started', { concurrency: config.WORKER_CONCURRENCY, scheduler: !!scheduler, websockets: !!streams });
   return {
     worker,
     scheduler,
     stop: async () => {
       scheduler?.stop();
-      rt.streams?.stop();
+      streams?.stop();
+      ctx.marketData.attachStreams(null);
       await worker.stop();
       await recordEvent(ctx.db, 'INFO', 'worker', 'WORKER_STOPPED', 'worker stopped', worker.stats()).catch(() => undefined);
     },

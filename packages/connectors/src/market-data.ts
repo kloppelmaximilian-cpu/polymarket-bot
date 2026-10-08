@@ -35,6 +35,9 @@ export class MarketDataService {
   readonly kraken: KrakenConnector;
   readonly polymarket: PolymarketConnector;
 
+  /** Live Binance stream, when the process that trades has one (see attachStreams). */
+  private streams: BinanceStreams | null = null;
+
   constructor(private readonly o: MarketDataOptions) {
     this.health = new HealthTracker(o.staleAfterMs);
     for (const d of DATA_SOURCES) this.health.configure(d.id, d.staleAfterMs);
@@ -54,6 +57,14 @@ export class MarketDataService {
     this.coinbase = new CoinbaseConnector(this.http);
     this.kraken = new KrakenConnector(this.http);
     this.polymarket = new PolymarketConnector(this.http);
+    if (o.streams) this.attachStreams(o.streams);
+  }
+
+  /** Use a live stream for Binance quotes and bars; it reports its health to this service. */
+  attachStreams(streams: BinanceStreams | null): void {
+    this.streams?.reportHealthTo(null);
+    this.streams = streams;
+    streams?.reportHealthTo(this.health);
   }
 
   private guard(): void {
@@ -75,7 +86,7 @@ export class MarketDataService {
 
   async book(venue: string, symbol: string): Promise<OrderBook> {
     this.guard();
-    const streamed = venue === 'binance' ? this.o.streams?.quote(symbol) : undefined;
+    const streamed = venue === 'binance' ? this.streams?.quote(symbol) : undefined;
     if (streamed && Date.now() - streamed.receivedAt < 10_000) return streamed;
     if (venue === 'binance' || venue === 'binance-futures') return this.binance.book(symbol);
     if (venue === 'coinbase') return this.coinbase.book(symbol);
@@ -127,7 +138,7 @@ export class MarketDataService {
     for (const r of reqs) {
       try {
         if (r.kind === 'BARS') {
-          const streamed = r.venue === 'binance' ? this.o.streams?.bars(r.symbol) ?? [] : [];
+          const streamed = r.venue === 'binance' ? this.streams?.bars(r.symbol) ?? [] : [];
           const bars = streamed.length >= r.minBars ? streamed : await this.bars(r.venue, r.symbol, r.interval, Math.min(r.minBars, 1500));
           bundle.bars![r.symbol] = bars;
           bundle.books![r.symbol] = await this.book(r.venue, r.symbol);

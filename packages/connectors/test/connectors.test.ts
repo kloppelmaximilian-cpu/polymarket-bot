@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import {
   ALLOWED_HOSTS,
+  BINANCE_WS_SOURCE,
   BinanceConnector,
   BinanceStreams,
   CoinbaseConnector,
@@ -313,5 +314,37 @@ describe('websockets', () => {
     st.handle({ garbage: true });
     st.handle({ stream: 'btcusdt@bookTicker', data: { s: 'BTCUSDT', b: '101', B: '1', a: '100', A: '1' } }); // crossed → ignored
     expect(st.quote('BTCUSDT')!.bids[0]!.price).toBe(100);
+  });
+
+  it('reports the stream to the health table: messages connect it, disconnects count as failures', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000_000);
+    const md = new MarketDataService({ staleAfterMs: 60_000, enabled: true, fetch: (async () => new Response('[]')) as typeof fetch });
+    const st = new BinanceStreams(['BTCUSDT'], '1h');
+    expect(md.health.status(BINANCE_WS_SOURCE, Date.now())).toBe('OFFLINE');
+    md.attachStreams(st);
+    const tick = { stream: 'btcusdt@bookTicker', data: { u: 1, s: 'BTCUSDT', b: '100', B: '1', a: '101', A: '1' } };
+    st.handle(tick);
+    expect(md.health.status(BINANCE_WS_SOURCE, Date.now())).toBe('CONNECTED');
+    // Many messages per second are sampled, not counted one by one.
+    for (let i = 0; i < 50; i++) st.handle(tick);
+    expect(md.health.state(BINANCE_WS_SOURCE).successCount).toBe(1);
+    vi.advanceTimersByTime(6_000);
+    st.handle(tick);
+    expect(md.health.state(BINANCE_WS_SOURCE).successCount).toBe(2);
+    st.onSocketState('CLOSED', 'stale: no messages');
+    expect(md.health.state(BINANCE_WS_SOURCE).lastError).toMatch(/stale/);
+    expect(md.health.status(BINANCE_WS_SOURCE, Date.now())).toBe('DEGRADED');
+    // An error followed by a close counts once, with the error as the reason.
+    st.onSocketState('OPEN', 'error: getaddrinfo ENOTFOUND');
+    st.onSocketState('CLOSED', 'closed');
+    expect(md.health.state(BINANCE_WS_SOURCE).lastError).toBe('websocket closed (error: getaddrinfo ENOTFOUND)');
+    expect(md.health.state(BINANCE_WS_SOURCE).consecutiveFailures).toBe(2);
+    // A deliberate stop is not a failure; a detached stream reports nothing.
+    st.onSocketState('CLOSED', 'stopped');
+    md.attachStreams(null);
+    st.onSocketState('CLOSED', 'closed');
+    expect(md.health.state(BINANCE_WS_SOURCE).consecutiveFailures).toBe(2);
+    vi.useRealTimers();
   });
 });

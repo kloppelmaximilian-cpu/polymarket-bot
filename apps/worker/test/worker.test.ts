@@ -31,7 +31,7 @@ afterAll(async () => h?.close());
 
 describe('background worker', () => {
   it('runs queued jobs, records results and heartbeats, and stops cleanly', async () => {
-    const bg = await startBackground({ ctx, queue, streams: null, config: ctx.config, logger: ctx.logger });
+    const bg = await startBackground({ ctx, queue, config: ctx.config, logger: ctx.logger });
     try {
       const { id } = await queue.enqueue('pipeline.advance', {}, { dedupeKey: 'test:advance:1' });
       const done = await waitFor(async () => {
@@ -51,7 +51,7 @@ describe('background worker', () => {
 
   it('does not run acting jobs while the emergency stop is engaged, but keeps monitoring', async () => {
     await engageEmergencyStop(ctx, 'worker test', SYSTEM);
-    const bg = await startBackground({ ctx, queue, streams: null, config: ctx.config, logger: ctx.logger });
+    const bg = await startBackground({ ctx, queue, config: ctx.config, logger: ctx.logger });
     try {
       const tick = await queue.enqueue('paper.tick', {}, { dedupeKey: 'test:tick:halted' });
       const risk = await queue.enqueue('risk.monitor', {}, { dedupeKey: 'test:risk:halted' });
