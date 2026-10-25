@@ -447,6 +447,7 @@ class ProjClass:
         self.line = line
         self.fields = {}      # name -> type
         self.var_fields = set()
+        self.field_defaults = []   # (lineno, expression text)
         self.methods = defaultdict(list)
         self.enum_values = set()
 
@@ -517,11 +518,13 @@ class Project:
                     current_class.methods[func.name].append(func)
                     i = consumed
                     continue
-                m = re.match(r"(?:@editable\s+)?(var\s+)?([A-Za-z_]\w*)\s*:\s*(.+?)\s*(?:=.*)?$", stripped)
+                m = re.match(r"(?:@editable\s+)?(var\s+)?([A-Za-z_]\w*)\s*:\s*(.+?)\s*(?:=(?!=)\s*(.*))?$", stripped)
                 if m:
                     current_class.fields[m.group(2)] = m.group(3).strip()
                     if m.group(1):
                         current_class.var_fields.add(m.group(2))
+                    if m.group(4):
+                        current_class.field_defaults.append((lineno, " " * 8 + m.group(4)))
             i += 1
 
     @staticmethod
@@ -814,6 +817,8 @@ class Checker:
         elif name in self.p.classes and len(toks) > 1 and toks[1][0] == "archetype":
             cur = name
             idx = 2
+            if report is not None:
+                self.check_archetype_fields(name, toks[1][1], report)
         elif name in self.p.classes and len(toks) == 1:
             # bare type name, e.g. the indented archetype form 'heist_save:'
             return name
@@ -827,6 +832,7 @@ class Checker:
             idx = 2
             if report is not None:
                 self.check_type_import(name, func, report)
+                self.check_archetype_fields(name, toks[1][1], report)
         elif self.d.type_defs(name) and len(toks) > 1 and toks[1][0] == "member":
             # enum value or static access like orientation.Vertical
             tdefs = self.d.type_defs(name)
@@ -1022,6 +1028,20 @@ class Checker:
             self.stats["project_calls"] += 1
         return strip_qualifier(rtype)
 
+    def check_archetype_fields(self, type_name, content, report):
+        """Every 'Field := value' in Type{...} must be a data member of Type."""
+        for part in split_top(content):
+            fm = re.match(r"\s*([A-Za-z_]\w*)\s*:=", part)
+            if not fm:
+                continue
+            found = self.find_member(type_name, fm.group(1))
+            if not found or found[0] in ("projmethod", "extension"):
+                report("ERROR", f"archetype {type_name}{{...}} sets unknown field '{fm.group(1)}'")
+            elif found[0] == "digest" and all(sym.has_params for sym in found[1]):
+                report("ERROR", f"archetype {type_name}{{...}} sets '{fm.group(1)}', which is a method")
+            else:
+                self.verified[f"{found[2]}.{fm.group(1)}"].add("")
+
     def check_symbol_import(self, sym, func, report):
         fname = func.file if func else ""
         module = sym.module
@@ -1083,6 +1103,7 @@ class Checker:
         if func.inline_body:
             body = [(func.line, " " * 99 + func.inline_body)] + body
         self.check_set_targets(func, body, env)
+        self.check_colon_archetypes(func, body)
         for lineno, raw in body:
             code = mask_strings(strip_comment(raw)).rstrip()
             if not code.strip():
@@ -1182,6 +1203,27 @@ class Checker:
                         self.add("UNRESOLVED", func.file, lineno, f"'set {target}': field not found")
                     elif parts[-1] not in self.p.classes[owner].var_fields:
                         self.add("ERROR", func.file, lineno, f"'set {target}' but field {owner}.{parts[-1]} is not declared var")
+
+    def check_colon_archetypes(self, func, body):
+        """'heist_save:' followed by indented 'Field := value' lines."""
+        open_type, open_indent = None, 0
+        for lineno, raw in body:
+            code = strip_comment(raw).rstrip()
+            if not code.strip():
+                continue
+            indent = len(code) - len(code.lstrip(" "))
+            if open_type is not None and indent <= open_indent:
+                open_type = None
+            m = re.fullmatch(r"\s*([a-z_]\w*)\s*:", code)
+            if m and (m.group(1) in self.p.classes or self.d.type_defs(m.group(1))):
+                open_type, open_indent = m.group(1), indent
+                continue
+            if open_type is not None:
+                fm = re.match(r"\s*([A-Za-z_]\w*)\s*:=", code)
+                if fm:
+                    found = self.find_member(open_type, fm.group(1))
+                    if not found or found[0] in ("projmethod", "extension"):
+                        self.add("ERROR", func.file, lineno, f"archetype {open_type}: sets unknown field '{fm.group(1)}'")
 
     def field_owner(self, type_name, field):
         for anc in self.ancestors_any(type_name or ""):
@@ -1304,6 +1346,9 @@ class Checker:
             for funcs in pcls.methods.values():
                 for f in funcs:
                     self.check_function(f)
+            if pcls.field_defaults:
+                defaults = Func("<field defaults>", [], set(), "void", pcls.name, pcls.file, pcls.line, pcls.field_defaults)
+                self.check_function(defaults)
         # de-duplicate
         unique, seen = [], set()
         for f in self.findings:

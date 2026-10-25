@@ -165,7 +165,9 @@ sky_heist_game := class(creative_device):
     # ------------------------------------------------------------------
     # Feedback
     # ------------------------------------------------------------------
-    # Per-player toast messages (first entry is used).
+    # Entry 0 shows per-player toasts. Optional entry 1 shows round and event
+    # banners, so a banner never hides a personal message (a HUD message
+    # device displays one message at a time).
     @editable
     Announcers:[]hud_message_device = array{}
     @editable
@@ -314,6 +316,10 @@ sky_heist_game := class(creative_device):
             if (not States[Player]):
                 OnPlayerAdded(Player)
             SubscribeCharacter(Player)
+            # The player UI may not exist yet when PlayerAddedEvent fires;
+            # Show() is idempotent, so retrying on every spawn is safe.
+            if (Hud := Huds[Player]):
+                Hud.Show()
             if (State := States[Player]):
                 set State.TeamIndex = TeamIndexOf(Player)
                 set State.LastDamager = false
@@ -568,10 +574,15 @@ sky_heist_game := class(creative_device):
             NewBest:logic = if (State.RoundBanked > State.BestRoundBanked) then true else false
             if (NewBest?):
                 set State.BestRoundBanked = State.RoundBanked
-            AddXP(Player, State, XP)
+            OldLevel:int = State.GetLevel()
+            # The round summary is the last toast of the round, so it carries the
+            # level-up news itself instead of being overwritten by it.
+            AddXP(Player, State, XP, false)
+            NewLevel:int = State.GetLevel()
             ResultText:string = if (Won?) then "YOUR TEAM WON!" else "Round over."
             BestText:string = if (NewBest?, State.RoundBanked > 0) then " NEW PERSONAL BEST!" else ""
-            Toast(Player, "{ResultText} You banked {State.RoundBanked} (+{XP} XP).{BestText}")
+            LevelText:string = if (NewLevel > OldLevel) then " LEVEL UP: {NewLevel} {TitleForLevel(NewLevel)}! {UnlockText(NewLevel)}" else ""
+            Toast(Player, "{ResultText} You banked {State.RoundBanked} (+{XP} XP).{BestText}{LevelText}")
             StoreHeistSave(Player, State.ToSave())
             for (Tracker : RoundCompleteAnalytics):
                 Tracker.Submit(Player)
@@ -866,13 +877,14 @@ sky_heist_game := class(creative_device):
                 State.RefreshContracts(Today)
                 RefreshContractsHud(Player, State)
 
-    AddXP(Player:player, State:heist_player_state, Amount:int):void =
+    AddXP(Player:player, State:heist_player_state, Amount:int, AnnounceLevelUp:logic):void =
         if (Amount > 0):
             OldLevel:int = State.GetLevel()
             set State.TotalXP = AddCapped(State.TotalXP, Amount, MaxStoredXP)
             NewLevel:int = State.GetLevel()
             if (NewLevel > OldLevel):
-                Toast(Player, "LEVEL UP! Level {NewLevel} - {TitleForLevel(NewLevel)}. {UnlockText(NewLevel)}")
+                if (AnnounceLevelUp?):
+                    Toast(Player, "LEVEL UP! Level {NewLevel} - {TitleForLevel(NewLevel)}. {UnlockText(NewLevel)}")
                 for (Tracker : LevelUpAnalytics):
                     Tracker.Submit(Player)
             RefreshLevel(Player, State)
@@ -892,7 +904,7 @@ sky_heist_game := class(creative_device):
         Completed:[]int = State.AdvanceContract(TodayContracts, Kind, Amount)
         for (Slot : Completed):
             Toast(Player, "CONTRACT COMPLETE: {ContractLabel(Kind)} (+{ContractRewardXP} XP)")
-            AddXP(Player, State, ContractRewardXP)
+            AddXP(Player, State, ContractRewardXP, true)
             for (Tracker : ContractCompleteAnalytics):
                 Tracker.Submit(Player)
         if (Completed.Length > 0):
@@ -908,8 +920,12 @@ sky_heist_game := class(creative_device):
             Announcer.Show(Player, GameText(Text), ?DisplayTime := 3.0)
 
     AnnounceAll(Text:string):void =
-        for (Player -> State : States):
-            Toast(Player, Text)
+        if (Banner := Announcers[1]):
+            for (Player -> State : States):
+                Banner.Show(Player, GameText(Text), ?DisplayTime := 4.0)
+        else:
+            for (Player -> State : States):
+                Toast(Player, Text)
 
     PlayFor(Sounds:[]audio_player_device, Player:player):void =
         for (Sound : Sounds):

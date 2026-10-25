@@ -133,6 +133,20 @@ class StaticCheckerMutationTests(unittest.TestCase):
         self.mutate_and_check("main_game.verse", "        var BestScore:int = 0", "        BestScore:int = 0",
                               "is not declared var")
 
+    def test_unknown_archetype_field(self):
+        self.mutate_and_check("heist_hud.verse", "BagBlock:text_block = text_block{DefaultTextColor := NamedColors.White}",
+                              "BagBlock:text_block = text_block{DefaultTextColour := NamedColors.White}",
+                              "unknown field 'DefaultTextColour'")
+
+    def test_unknown_color_in_field_default(self):
+        self.mutate_and_check("heist_hud.verse", "LevelBlock:text_block = text_block{DefaultTextColor := NamedColors.Gold}",
+                              "LevelBlock:text_block = text_block{DefaultTextColor := NamedColors.Golden}",
+                              "no member Golden")
+
+    def test_unknown_field_in_colon_archetype(self):
+        self.mutate_and_check("heist_player.verse", "            RoundsWon := Self.RoundsWon",
+                              "            RoundWins := Self.RoundsWon", "unknown field 'RoundWins'")
+
     def test_tab_indentation(self):
         self.mutate_and_check("heist_rules.verse", "    Clamp(Current + Amount, 0, Cap)",
                               "\tClamp(Current + Amount, 0, Cap)", "tab character")

@@ -1,0 +1,140 @@
+# Verse static check report
+
+```
+Digest build: ++Fortnite+Release-42.40-CL-59247843
+Digest symbols: 2182 types, 195 functions, 146 extension methods, 68 modules
+Project: 5 files, 12 classes, 24 top-level functions, 82 methods
+Expression chains analysed: 1699, digest calls verified: 177, project calls verified: 242
+Distinct digest APIs referenced: 126
+Findings: none
+
+```
+
+## Digest APIs referenced by the project
+
+- `Ceil`
+- `Clamp`
+- `Floor`
+- `GetPlayerUI`
+- `GetSecondsSinceEpoch`
+- `GetSimulationElapsedTime`
+- `Join`
+- `Max`
+- `Min`
+- `Mod`
+- `NamedColors.Cyan`
+- `NamedColors.Gold`
+- `NamedColors.Orange`
+- `NamedColors.White`
+- `Print`
+- `Quotient`
+- `Shuffle`
+- `Sleep`
+- `agent`
+- `analytics_device`
+- `analytics_device.Submit`
+- `anchors.Maximum`
+- `anchors.Minimum`
+- `audio_player_device`
+- `audio_player_device.Play`
+- `audio_player_device.Stop`
+- `awaitable.Await`
+- `bank_zone_handler.BaseIndex`
+- `bank_zone_handler.Game`
+- `barrier_device`
+- `barrier_device.Disable`
+- `barrier_device.Enable`
+- `billboard_device`
+- `billboard_device.SetText`
+- `button_device`
+- `button_device.Disable`
+- `button_device.Enable`
+- `button_device.GetInteractionTime`
+- `button_device.InteractedWithEvent`
+- `button_device.SetInteractionTime`
+- `cancelable`
+- `cancelable.Cancel`
+- `canvas`
+- `canvas.AddWidget`
+- `canvas_slot.Alignment`
+- `canvas_slot.Anchors`
+- `canvas_slot.SizeToContent`
+- `canvas_slot.Widget`
+- `character_handler.Game`
+- `character_handler.Player`
+- `collectible_object_device`
+- `collectible_object_device.CollectedEvent`
+- `collectible_object_device.RespawnForAll`
+- `damage_result`
+- `damage_result.Instigator`
+- `damageable.DamagedEvent`
+- `device_ai_interaction_result`
+- `device_ai_interaction_result.Source`
+- `effect_volume_device.Disable`
+- `effect_volume_device.Enable`
+- `elimination_result`
+- `elimination_result.EliminatingCharacter`
+- `fort_character.EliminatedEvent`
+- `fort_character.GetAgent`
+- `fort_playspace.GetPlayers`
+- `fort_playspace.GetTeamCollection`
+- `fort_playspace.PlayerAddedEvent`
+- `fort_playspace.PlayerRemovedEvent`
+- `fort_team_collection.GetTeams`
+- `fort_team_collection.IsOnTeam`
+- `game_action_instigator.GetInstigatorAgent`
+- `guard_spawner_device`
+- `guard_spawner_device.Despawn`
+- `guard_spawner_device.Disable`
+- `guard_spawner_device.EliminatedEvent`
+- `guard_spawner_device.Enable`
+- `guard_spawner_device.Spawn`
+- `heist_hud.Player`
+- `heist_player_state.Player`
+- `hud_message_device`
+- `hud_message_device.Show`
+- `item_granter_device`
+- `item_granter_device.GrantItem`
+- `level_progress.Level`
+- `level_progress.XPForNext`
+- `level_progress.XPIntoLevel`
+- `message`
+- `mutator_zone_device`
+- `mutator_zone_device.AgentEntersEvent`
+- `player`
+- `player.GetFortCharacter`
+- `player_marker_device`
+- `player_marker_device.Attach`
+- `player_marker_device.Detach`
+- `player_spawner_device`
+- `player_spawner_device.Disable`
+- `player_spawner_device.Enable`
+- `player_spawner_device.SpawnedEvent`
+- `player_ui.AddWidget`
+- `player_ui.RemoveWidget`
+- `player_ui_slot.InputMode`
+- `safe_handler.Game`
+- `safe_handler.SafeIndex`
+- `score_manager_device`
+- `score_manager_device.Activate`
+- `score_manager_device.SetScoreAward`
+- `sky_heist_game.GetPlayspace`
+- `stack_box`
+- `stack_box.AddWidget`
+- `stack_box.Orientation`
+- `stack_box_slot.HorizontalAlignment`
+- `stack_box_slot.Widget`
+- `subscribable.Subscribe`
+- `teleporter_device`
+- `teleporter_device.Teleport`
+- `text_base.DefaultJustification`
+- `text_base.DefaultTextColor`
+- `text_base.SetText`
+- `text_base.SetTextColor`
+- `text_block`
+- `vault_rob_handler.BaseIndex`
+- `vault_rob_handler.Game`
+- `vector2.X`
+- `vector2.Y`
+- `vfx_spawner_device`
+- `vfx_spawner_device.Restart`

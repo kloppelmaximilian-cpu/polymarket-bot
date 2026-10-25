@@ -594,7 +594,7 @@ class SkyHeistModel:
                 self.AdvanceContracts(player, state, 4, 1)
             if state.RoundBanked > state.BestRoundBanked:
                 state.BestRoundBanked = state.RoundBanked
-            self.AddXP(player, state, xp)
+            self.AddXP(player, state, xp, False)
             self.store_save(player, state.ToSave())
             results[player] = dict(won=won, xp=xp)
         return results
@@ -820,11 +820,11 @@ class SkyHeistModel:
             for state in self.States.values():
                 state.RefreshContracts(self.Today)
 
-    def AddXP(self, player, state, amount):
+    def AddXP(self, player, state, amount, announce_level_up=True):
         if amount > 0:
             old = state.GetLevel()
             state.TotalXP = AddCapped(state.TotalXP, amount, MaxStoredXP)
-            if state.GetLevel() > old:
+            if state.GetLevel() > old and announce_level_up:
                 self.toasts.append((player, f"LEVEL UP {state.GetLevel()}"))
 
     def AdvanceContracts(self, player, state, kind, amount):
