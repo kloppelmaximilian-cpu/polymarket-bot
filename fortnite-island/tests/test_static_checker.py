@@ -147,6 +147,17 @@ class StaticCheckerMutationTests(unittest.TestCase):
         self.mutate_and_check("heist_player.verse", "            RoundsWon := Self.RoundsWon",
                               "            RoundWins := Self.RoundsWon", "unknown field 'RoundWins'")
 
+    def test_project_name_colliding_with_import(self):
+        self.mutate_and_check("main_game.verse", "    Toast(Player:player, Text:string):void =",
+                              "    Toast(Player:player, Text:string):void =\n        Toast(Player, Text)\n\nSleep(Seconds:float):void = {}\n\nheist_dummy := class:\n    X:int = 0\n\nsky_heist_dummy := class(creative_device):\n    Y(Player:player, Text:string):void =",
+                              "collides with imported")
+
+    def test_ambiguous_type_from_two_imports(self):
+        self.mutate_and_check("main_game.verse", "heist_base := class<concrete>:\n",
+                              "using { /Verse.org/SpatialMath }\nusing { /UnrealEngine.com/Temporary/SpatialMath }\n"
+                              "heist_base := class<concrete>:\n    Spot:vector3 = vector3{}\n",
+                              "is ambiguous")
+
     def test_tab_indentation(self):
         self.mutate_and_check("heist_rules.verse", "    Clamp(Current + Amount, 0, Cap)",
                               "\tClamp(Current + Amount, 0, Cap)", "tab character")

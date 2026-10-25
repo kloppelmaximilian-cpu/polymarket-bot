@@ -1042,9 +1042,20 @@ class Checker:
             else:
                 self.verified[f"{found[2]}.{fm.group(1)}"].add("")
 
+    def visible_modules(self, fname):
+        return self.p.usings.get(fname, set()) | ROOT_MODULES
+
+    def ambiguous_type_modules(self, name, fname):
+        """Imported modules that each define a type called name (>1 = ambiguous)."""
+        return sorted(self.type_modules(name) & self.visible_modules(fname))
+
     def check_symbol_import(self, sym, func, report):
         fname = func.file if func else ""
         module = sym.module
+        if sym.kind == "function":
+            mods = sorted({s.module for s in self.d.functions.get(sym.name, [])} & self.visible_modules(fname))
+            if len(mods) > 1:
+                report("ERROR", f"function '{sym.name}' is ambiguous: defined in {mods}")
         if not module or module in ROOT_MODULES:
             return
         if module not in self.p.usings.get(fname, set()):
@@ -1055,6 +1066,8 @@ class Checker:
         if name in self.p.classes or name in BUILTIN_TYPES or name in INTRINSIC_TYPES:
             return
         mods = self.type_modules(name)
+        if len(self.ambiguous_type_modules(name, fname)) > 1:
+            report("ERROR", f"type '{name}' is ambiguous: defined in {self.ambiguous_type_modules(name, fname)}")
         if not mods or mods & ROOT_MODULES:
             return
         if not mods & self.p.usings.get(fname, set()):
@@ -1242,6 +1255,8 @@ class Checker:
                 if not self.is_known_type(name, func.file):
                     self.add("ERROR", func.file, lineno, f"unknown type '{name}' in local declaration")
                 elif self.d.type_defs(name) and name not in self.p.classes and name not in BUILTIN_TYPES:
+                    if len(self.ambiguous_type_modules(name, func.file)) > 1:
+                        self.add("ERROR", func.file, lineno, f"type '{name}' is ambiguous: {self.ambiguous_type_modules(name, func.file)}")
                     mods = self.type_modules(name)
                     if not (mods & ROOT_MODULES) and not (mods & self.p.usings.get(func.file, set())):
                         self.add("ERROR", func.file, lineno, f"type '{name}' needs one of {sorted(mods)} imported")
@@ -1290,7 +1305,28 @@ class Checker:
 
     # -- declarations ------------------------------------------------------------
 
+    def check_name_collisions(self):
+        """Project top-level names must not clash with names imported by using."""
+        all_imports = set()
+        for mods in self.p.usings.values():
+            all_imports |= mods
+        visible = all_imports | ROOT_MODULES
+        names = {}
+        for name, funcs in self.p.functions.items():
+            names[name] = (funcs[0].file, funcs[0].line)
+        for name, pcls in self.p.classes.items():
+            names[name] = (pcls.file, pcls.line)
+        for name in self.p.constants:
+            names.setdefault(name, ("", 0))
+        for name, (fname, line) in names.items():
+            hits = sorted({t.module for t in self.d.type_defs(name)} & visible)
+            hits += sorted({s.module for s in self.d.functions.get(name, [])} & visible)
+            hits += sorted({s.module for s in self.d.constants.get(name, [])} & visible)
+            if hits:
+                self.add("ERROR", fname, line, f"project name '{name}' collides with imported definition(s) in {sorted(set(hits))}")
+
     def check_declarations(self):
+        self.check_name_collisions()
         seen = {}
         for name, funcs in self.p.functions.items():
             if len(funcs) > 1:
@@ -1309,6 +1345,8 @@ class Checker:
                     if not self.is_known_type(t, pcls.file):
                         self.add("UNRESOLVED", pcls.file, pcls.line, f"{cname}.{field}: unknown type '{t}'")
                     elif self.d.type_defs(t) and t not in self.p.classes:
+                        if len(self.ambiguous_type_modules(t, pcls.file)) > 1:
+                            self.add("ERROR", pcls.file, pcls.line, f"{cname}.{field}: type '{t}' is ambiguous: {self.ambiguous_type_modules(t, pcls.file)}")
                         mods = self.type_modules(t)
                         if not (mods & ROOT_MODULES) and not (mods & self.p.usings.get(pcls.file, set())):
                             self.add("ERROR", pcls.file, pcls.line, f"{cname}.{field}: type '{t}' needs one of {sorted(mods)} imported")
@@ -1330,6 +1368,8 @@ class Checker:
                 if not self.is_known_type(name, f.file):
                     self.add("UNRESOLVED", f.file, f.line, f"{f.name}: unknown type '{name}' in signature")
                 elif self.d.type_defs(name) and name not in self.p.classes:
+                    if len(self.ambiguous_type_modules(name, f.file)) > 1:
+                        self.add("ERROR", f.file, f.line, f"{f.name}: type '{name}' is ambiguous: {self.ambiguous_type_modules(name, f.file)}")
                     mods = self.type_modules(name)
                     if not (mods & ROOT_MODULES) and not (mods & self.p.usings.get(f.file, set())):
                         self.add("ERROR", f.file, f.line, f"{f.name}: type '{name}' needs one of {sorted(mods)} imported")

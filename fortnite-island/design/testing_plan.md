@@ -8,12 +8,13 @@ Umgebung: Linux-Container, Python 3.13.17. **Kein UEFN, kein Verse-Compiler, kei
 
 | # | Prüfung | Werkzeug | Ergebnis (real) |
 |---|---|---|---|
-| R-1 | Statische API-Prüfung aller 5 Verse-Dateien gegen die offiziellen Digests von Fortnite 42.40 (`++Fortnite+Release-42.40-CL-59247843`) | `tools/verse_static_check.py` | **0 Befunde.** 1.699 Ausdrucksketten analysiert, 177 Digest-Aufrufe und 242 Projekt-Aufrufe aufgelöst, 126 verschiedene APIs bzw. Felder referenziert. Bericht: [`../tools/static_check_report.md`](../tools/static_check_report.md) |
-| R-2 | Mutationstests des Prüfers: 18 absichtlich eingebaute Fehlerklassen müssen erkannt werden, das unveränderte Projekt darf keinen Fehler zeigen. | `tests/test_static_checker.py` | **19/19 bestanden** |
+| R-1 | Statische API-Prüfung aller 5 Verse-Dateien und der zusammengeführten Komplettdatei gegen die offiziellen Digests von Fortnite 42.40 (`++Fortnite+Release-42.40-CL-59247843`) | `tools/verse_static_check.py` | **0 Befunde.** 1.699 Ausdrucksketten analysiert, 177 Digest-Aufrufe und 242 Projekt-Aufrufe aufgelöst, 126 verschiedene APIs bzw. Felder referenziert. Bericht: [`../tools/static_check_report.md`](../tools/static_check_report.md) |
+| R-2 | Mutationstests des Prüfers: 20 absichtlich eingebaute Fehlerklassen (u. a. mehrdeutige Importe, Namenskollisionen) müssen erkannt werden, das unveränderte Projekt darf keinen Fehler zeigen. | `tests/test_static_checker.py` | **21/21 bestanden** |
 | R-3 | Paritätstests: Python-Modell und `heist_rules.verse` haben identische Konstanten und Funktionen. | `tests/test_heist_model.py::RuleParityTests` | **2/2 bestanden** |
 | R-4 | Regel- und Szenariotests am Python-Modell der Spiellogik | `tests/test_heist_model.py` | **48/48 bestanden** |
 | R-5 | Doku-Konsistenz: alle 44 `@editable`-Felder in `device_setup.md` erklärt, alle Verse-Dateien in der README | `tests/test_docs_consistency.py` | **2/2 bestanden** |
-| | **Gesamt** | `python3 -m unittest discover -s tests` | **71/71 bestanden** |
+| R-6 | Komplettdatei `UEFN_IMPORT/sky_heist_complete.verse`: aktuell zu den Modulen, jedes Modul genau einmal, statische Prüfung ohne Befund | `tests/test_single_file.py` | **3/3 bestanden** |
+| | **Gesamt** | `python3 -m unittest discover -s tests` | **76/76 bestanden** |
 
 Befehle zum Nachvollziehen:
 

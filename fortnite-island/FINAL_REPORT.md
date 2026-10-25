@@ -18,7 +18,7 @@ Datum: 25.10.2026
 
 ## 3. Erstellte Dateien
 
-Siehe [`README.md` § 1](README.md). Kurz: die Marktanalyse mit 6 Datentabellen und dem Erzeugungsskript, 7 Design-Dokumente, 5 Verse-Dateien (~1.450 Zeilen), der statische Prüfer mit Bericht, das Python-Modell und 71 Tests.
+Siehe [`README.md` § 1](README.md). Kurz: die Marktanalyse mit 6 Datentabellen und dem Erzeugungsskript, 7 Design-Dokumente, 5 Verse-Dateien (~1.450 Zeilen), der statische Prüfer mit Bericht, das Python-Modell, 76 Tests und die Komplettdatei `UEFN_IMPORT/sky_heist_complete.verse` (alle Module + Bauanleitung, zum direkten Einfügen in UEFN).
 
 ## 4. Implementiertes Gameplay (Verse)
 
@@ -43,10 +43,11 @@ Siehe [`README.md` § 1](README.md). Kurz: die Marktanalyse mit 6 Datentabellen 
 | Prüfung | Ergebnis |
 |---|---|
 | Statische Prüfung gegen die Verse-Digests von Fortnite 42.40 | **0 Befunde**, 1.699 Ausdrucksketten, 126 APIs bzw. Felder ([`tools/static_check_report.md`](tools/static_check_report.md)) |
-| Mutationstests des Prüfers (18 eingebaute Fehlerklassen) | **19/19** |
+| Mutationstests des Prüfers (20 eingebaute Fehlerklassen) | **21/21** |
+| Komplettdatei: aktuell, vollständig, statisch fehlerfrei | **3/3** |
 | Paritäts-, Regel- und Szenariotests am Spielmodell | **50/50** |
 | Doku-Konsistenz | **2/2** |
-| **Gesamt** | **71/71 bestanden** (`python3 -m unittest discover -s tests`, Python 3.13.17) |
+| **Gesamt** | **76/76 bestanden** (`python3 -m unittest discover -s tests`, Python 3.13.17) |
 
 Durch diese Prüfungen gefunden und behoben: doppelte Auszahlung bei gleichzeitigem Safe oder Jackpot, zurückgerollte Fehlermeldungen in der Setup-Validierung, fehlendes HUD bei spät bereiter Player-UI, überschriebene Level-up-Meldung, ein `for`-Filter auf eine veränderliche Variable, dazu drei Lücken im Prüfer selbst ([`design/testing_plan.md` § 1.4](design/testing_plan.md)).
 

@@ -2,7 +2,16 @@
 
 Ein rundenbasiertes Heist-Partyspiel für Fortnite Creative (UEFN). Vier Teams sammeln auf schwebenden Inseln Beute, sichern sie im eigenen Tresor und schubsen Gegner von der Insel, um ihnen den halben Beutel abzunehmen. Dazu kommen dauerhafter Fortschritt (Level, größerer Beutel, Start-Ausrüstung, Titel) und drei Daily Contracts pro Tag.
 
-> **Ehrlicher Stand in einem Satz:** Recherche, Konzept, Bauplan und der vollständige Verse-Code sind fertig und statisch gegen die offizielle Verse-API (Fortnite 42.40) geprüft, die Spiellogik ist mit 71 Tests am Python-Modell abgesichert. **Nicht** passiert ist: Kompilieren in UEFN, Bauen der 3D-Welt und Spielen im Editor. UEFN ist in dieser Umgebung nicht verfügbar.
+> **Ehrlicher Stand in einem Satz:** Recherche, Konzept, Bauplan und der vollständige Verse-Code sind fertig und statisch gegen die offizielle Verse-API (Fortnite 42.40) geprüft, abgesichert ist alles mit 76 Tests (Spielmodell, Prüfer-Mutationstests, Konsistenz von Doku und Komplettdatei). **Nicht** passiert ist: Kompilieren in UEFN, Bauen der 3D-Welt und Spielen im Editor. UEFN ist in dieser Umgebung nicht verfügbar.
+
+## ⚡ Schnellstart: eine einzige Datei für UEFN
+
+**[`UEFN_IMPORT/sky_heist_complete.verse`](UEFN_IMPORT/sky_heist_complete.verse)** enthält **alles, was sich als Datei liefern lässt**: die komplette Spiellogik (alle 5 Module zusammengeführt) und oben als Kommentar die vollständige Bauanleitung mit Insel-Einstellungen, Map-Plan, Device-Liste und Verdrahtung.
+
+1. In UEFN: **Verse → Verse Explorer → Create New Verse File** → Name `sky_heist_complete` → den gesamten Inhalt einfügen → **Build Verse Code**.
+2. Den Schritten 2–6 im Kopf der Datei folgen.
+
+**Grenze:** UEFN kann Inseln, Gebäude und Devices nicht aus einer Textdatei erzeugen. Die Welt und die ~144 Devices müssen einmal von Hand gebaut und verdrahtet werden; danach steuert die Datei das ganze Spiel. Verwende **entweder** diese Datei **oder** die 5 Einzeldateien aus `Verse/`, nie beides.
 
 Dieser Ordner liegt im Repository `polymarket-bot`, weil es kein Fortnite-Projekt gab. Er ist vollständig eigenständig und berührt den Bot-Code nicht.
 
@@ -25,6 +34,7 @@ Dieser Ordner liegt im Repository `polymarket-bot`, weil es kein Fortnite-Projek
 | [`design/testing_plan.md`](design/testing_plan.md) | ausgeführte Tests mit Ergebnissen, Editor-Testfälle T-01 bis T-20, Playtest-Plan |
 | [`design/performance.md`](design/performance.md) | Laufzeit- und Speicheranalyse, Risiken |
 | [`design/launch_strategy.md`](design/launch_strategy.md) | Titel, Beschreibung, Thumbnails, Trailer, Clips, Update-Plan, KPIs mit Maßnahmen |
+| [`UEFN_IMPORT/sky_heist_complete.verse`](UEFN_IMPORT/sky_heist_complete.verse) | **Komplettdatei zum Einfügen:** alle Verse-Module + Bauanleitung als Kommentar (erzeugt mit `tools/build_single_file.py`) |
 | [`Verse/main_game.verse`](Verse/main_game.verse) | Haupt-Device `sky_heist_game`: Rundenablauf, Events, Beute, Einzahlen, Stehlen, Tresor-Raub, Bounty, HUD-Anbindung |
 | [`Verse/heist_rules.verse`](Verse/heist_rules.verse) | reine Spielregeln (Level-Kurve, Boni, Steal-/Raub-Mengen, Contracts) |
 | [`Verse/heist_player.verse`](Verse/heist_player.verse) | Laufzeit-Zustand pro Spieler |
@@ -33,7 +43,8 @@ Dieser Ordner liegt im Repository `polymarket-bot`, weil es kein Fortnite-Projek
 | [`tools/verse_static_check.py`](tools/verse_static_check.py) | statischer Prüfer gegen Epics Verse-Digests |
 | [`tools/static_check_report.md`](tools/static_check_report.md) | letzter Prüfbericht (0 Befunde) |
 | [`tests/heist_model.py`](tests/heist_model.py) | ausführbares Python-Modell der Spiellogik |
-| `tests/test_heist_model.py`, `tests/test_static_checker.py`, `tests/test_docs_consistency.py` | 71 Tests |
+| [`tools/build_single_file.py`](tools/build_single_file.py) | erzeugt die Komplettdatei aus den Einzelmodulen |
+| `tests/test_heist_model.py`, `tests/test_static_checker.py`, `tests/test_docs_consistency.py`, `tests/test_single_file.py` | 76 Tests |
 | [`FINAL_REPORT.md`](FINAL_REPORT.md) | Abschlussbericht |
 
 ## 2. Feature-Status
