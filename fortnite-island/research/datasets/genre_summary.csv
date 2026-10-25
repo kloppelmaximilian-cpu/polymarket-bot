@@ -1,0 +1,14 @@
+genre,islands,sum_avg_daily_unique_players,median_avg_daily_unique_players,median_minutes_per_player,median_d1,median_d7,top_island_code,top_island_title
+battle-royale,87,5199487,10639,25.2,0.257,0.146,2515-6266-7600,BOX PVP
+shooter,87,5033131,22907,27.8,0.29,0.141,0148-0322-5437,Piece Control 2v2 🎯
+party-mini-games,100,2009345,3707,27.2,0.195,0.071,7786-0958-2481,PILLARS
+simulation-tycoon,107,1874510,2786,38.7,0.198,0.059,3225-0366-8885,STEAL THE BRAINROT
+horror,144,1313878,1666,23.6,0.091,0.015,7288-9515-0748,SCALE
+roleplaying-social,91,620525,2558,42.5,0.313,0.165,4220-9404-7987,Sprite Garden
+deathrun-platformer,141,563908,1406,25.5,0.117,0.028,4366-9611-6988,Only Up Fortnite! 🌄
+strategy,199,355110,122,28.1,0.054,0.01,7048-8422-2298,Bed Wars
+sports-racing,108,297821,912,24.1,0.143,0.034,2678-5257-1845,SUPER RAMP
+adventure-rpg,115,218922,604,28.2,0.146,0.03,1314-6986-8879,Aetheria (previously ANIME RPG TYCOON)
+survival,143,203479,403,24.8,0.122,0.027,1963-7902-5506,Ride An Animal
+roguelike,87,202544,279,38.6,0.179,0.07,1316-2698-6957,BACKROOMS [ROGUELIKE]
+music-rhythm,231,111088,12,12.3,0.04,0.003,0960-0671-7810,MIMIC PARTY

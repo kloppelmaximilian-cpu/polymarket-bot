@@ -1,0 +1,19 @@
+{
+  "islands_with_fresh_daily_data": 6633,
+  "islands_in_genre_rankings": 5107,
+  "daily_rows": 84309,
+  "daily_date_range": [
+    "2026-09-19",
+    "2026-10-23"
+  ],
+  "ranking_hours": 772,
+  "ranking_range": [
+    "2026-09-21T08:00:00Z",
+    "2026-10-24T22:00:00Z"
+  ],
+  "new_islands_catalogued": 15205,
+  "top1000_with_title": 198,
+  "top100_with_title": 46,
+  "tag_day": "2026-10-24",
+  "launches_final_144h": 12103
+}
